@@ -49,12 +49,12 @@ Product makers need to discover Reddit threads where users discuss problems thei
 - **So that** the app can understand what I'm promoting
 
 **Acceptance Criteria:**
-- [ ] URL input required (no manual-only option)
-- [ ] Fetch HTML → jsdom + Readability → LLM extraction
-- [ ] Block proceed if extraction returns empty
-- [ ] Proceed with partial info if some fields extracted
-- [ ] Editable fields: name, description, target audience
-- [ ] Wizard state in React (persist to DB on completion only)
+- [x] URL input required (no manual-only option)
+- [x] Fetch HTML → jsdom + Readability → LLM extraction
+- [x] Block proceed if extraction returns empty
+- [x] Proceed with partial info if some fields extracted
+- [x] Editable fields: name, description, target audience
+- [x] Wizard state in React (persist to DB on completion only)
 
 ### US-3: Keyword Generation
 - **As a** user
@@ -62,13 +62,13 @@ Product makers need to discover Reddit threads where users discuss problems thei
 - **So that** I can find relevant Reddit discussions
 
 **Acceptance Criteria:**
-- [ ] LLM generates ~10 keywords via `generateObject`
-- [ ] Zod schema with moderate validation (length, no special chars)
-- [ ] Structured prompt optimizing for Reddit search syntax
-- [ ] Flat list display, user can add/remove
-- [ ] Manual keyword input accepted as-is
-- [ ] Auto-preview threads (500ms debounce)
-- [ ] Block proceed if no threads found
+- [x] LLM generates ~10 keywords via `generateObject`
+- [x] Zod schema with moderate validation (length, no special chars)
+- [x] Structured prompt optimizing for Reddit search syntax
+- [x] Flat list display, user can add/remove
+- [x] Manual keyword input accepted as-is
+- [x] Auto-preview threads (500ms debounce)
+- [x] Block proceed if no threads found
 
 ### US-4: Thread Discovery
 - **As a** user
@@ -76,13 +76,13 @@ Product makers need to discover Reddit threads where users discuss problems thei
 - **So that** I can find engagement opportunities
 
 **Acceptance Criteria:**
-- [ ] Split view (40/60 ratio): list left, detail right
-- [ ] List shows: title, subreddit, relative age
-- [ ] Detail shows: title, 200 char preview, metadata, "Open in Reddit" (new tab)
-- [ ] Sort by recency (newest first)
-- [ ] 10 results per keyword, deduplicated by Reddit thread ID
-- [ ] Max thread age: 7 days
-- [ ] No subreddit filtering
+- [x] Split view (40/60 ratio): list left, detail right
+- [x] List shows: title, subreddit, relative age
+- [x] Detail shows: title, 200 char preview, metadata, "Open in Reddit" (new tab)
+- [x] Sort by recency (newest first)
+- [x] 10 results per keyword, deduplicated by Reddit thread ID
+- [x] Max thread age: 7 days
+- [x] No subreddit filtering
 
 ### US-5: Response Generation
 - **As a** user
@@ -90,14 +90,14 @@ Product makers need to discover Reddit threads where users discuss problems thei
 - **So that** I can engage with potential customers
 
 **Acceptance Criteria:**
-- [ ] Trigger from thread detail panel
-- [ ] Context: original post only + subreddit name
-- [ ] Target ~200 words (soft limit)
-- [ ] Clear product recommendation style, no auto-disclosure
-- [ ] Loading spinner until complete (no streaming)
-- [ ] Plain textarea for quick edits
-- [ ] Regenerate button (temperature > 0 for variation)
-- [ ] No markdown preview
+- [x] Trigger from thread detail panel
+- [x] Context: original post only + subreddit name
+- [x] Target ~200 words (soft limit)
+- [x] Clear product recommendation style, no auto-disclosure
+- [x] Loading spinner until complete (no streaming)
+- [x] Plain textarea for quick edits
+- [x] Regenerate button (temperature > 0 for variation)
+- [x] No markdown preview
 
 ### US-6: Reddit Posting
 - **As a** user
@@ -105,10 +105,10 @@ Product makers need to discover Reddit threads where users discuss problems thei
 - **So that** I don't have to copy/paste
 
 **Acceptance Criteria:**
-- [ ] One-click post (no confirmation)
-- [ ] Client-side Reddit API call with user's token
-- [ ] Toast notification on success
-- [ ] Show Reddit's error message on locked/deleted thread
+- [x] One-click post (no confirmation)
+- [x] Server-side Reddit API call with user's token
+- [x] Toast notification on success
+- [x] Show Reddit's error message on locked/deleted thread
 
 ### US-7: Monitoring Dashboard
 - **As a** user
@@ -116,12 +116,12 @@ Product makers need to discover Reddit threads where users discuss problems thei
 - **So that** I can continue engaging over time
 
 **Acceptance Criteria:**
-- [ ] Tabs: Threads / History / Dismissed
-- [ ] Badge marks new threads
-- [ ] 'New' flag cleared on thread selection
-- [ ] Manual "Find new threads now" button
-- [ ] Dismiss threads (per-product, restorable, no bulk actions)
-- [ ] Daily cron job at 6:00 UTC
+- [x] Tabs: Threads / History / Dismissed
+- [x] Badge marks new threads
+- [x] 'New' flag cleared on thread selection
+- [x] Manual "Find new threads now" button
+- [x] Dismiss threads (per-product, restorable, no bulk actions)
+- [x] Daily cron job at 6:00 UTC
 
 ### US-8: Multi-Product Support
 - **As a** user
@@ -129,11 +129,11 @@ Product makers need to discover Reddit threads where users discuss problems thei
 - **So that** I can promote different offerings
 
 **Acceptance Criteria:**
-- [ ] Dashboard shows product cards grid
-- [ ] Card shows: product name, new thread count badge
-- [ ] "Add Product" button → wizard
+- [x] Dashboard shows product cards grid
+- [x] Card shows: product name, new thread count badge
+- [x] "Add Product" button → wizard
 - [x] Re-run wizard to edit (no inline edit)
-- [ ] Unlimited products per user
+- [x] Unlimited products per user
 
 ### US-9: Post History
 - **As a** user
@@ -141,32 +141,32 @@ Product makers need to discover Reddit threads where users discuss problems thei
 - **So that** I can track my engagement
 
 **Acceptance Criteria:**
-- [ ] Store: thread URL, date posted, response snippet (~100 chars)
-- [ ] Retention: forever
-- [ ] Access via History tab in monitoring view
+- [x] Store: thread URL, date posted, response snippet (~100 chars)
+- [x] Retention: forever
+- [x] Access via History tab in monitoring view
 
 ---
 
 ## UI/UX Requirements
 
 ### Layout
-- [ ] Light theme only
-- [ ] Header: always visible, user avatar/dropdown (logout)
-- [ ] Sidebar: Products link, Settings (logout only)
-- [ ] Mobile: sidebar hidden, hamburger menu
+- [x] Light theme only
+- [x] Header: always visible, user avatar/dropdown (logout)
+- [x] Sidebar: Products link, Settings (logout only)
+- [x] Mobile: sidebar hidden, hamburger menu
 
 ### Loading States
-- [ ] Page loading: full skeleton placeholders
-- [ ] LLM operations: simple spinner
+- [x] Page loading: full skeleton placeholders
+- [x] LLM operations: simple spinner
 
 ### Wizard
-- [ ] Step indicator (dots), not clickable
-- [ ] Navigate with back/forward buttons only
-- [ ] Linear flow with back/forward navigation
+- [x] Step indicator (dots), not clickable
+- [x] Navigate with back/forward buttons only
+- [x] Linear flow with back/forward navigation
 
 ### Errors
-- [ ] Technical messages shown as-is
-- [ ] Online only (no offline support)
+- [x] Technical messages shown as-is
+- [x] Online only (no offline support)
 
 ---
 
@@ -353,7 +353,7 @@ Mounted at `/api/*` via Next.js catch-all route.
 5. Reddit search: native `oauth.reddit.com/search` endpoint, title + body
 6. Thread dedup: by `redditThreadId` in DB
 7. Cron job: iterates all products, searches keywords, retry on failure
-8. Client-side Reddit posts: uses user's token directly in browser
+8. Server-side Reddit posts: user's token accessed securely on server
 9. Rate limits: none enforced, user manages their own
 10. API keys: LLM keys in env vars only (shared across users)
 11. Deleted Reddit account: keep app data, user can re-auth with new account
