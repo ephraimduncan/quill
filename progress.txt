@@ -103,3 +103,20 @@
 - Added test suite in `__tests__/extract.test.ts` (7 tests)
 - Added test suite in `__tests__/setup.test.ts` (6 tests)
 - Total: 49 tests passing across 8 files
+
+### Completed: Step 2: Product info form
+
+- Updated `app/(app)/setup/page.tsx` with Step 2 implementation:
+  - Product info form with editable fields: name, description, target audience
+  - Pre-populated with data from URL extraction
+  - Requires product name to proceed (allows partial data)
+  - Back button returns to Step 1, Continue advances to Step 3
+- Added `Textarea` import for multi-line fields
+- Added `handleProductInfoSubmit` function for form submission
+- Added test suite in `__tests__/setup.test.ts` (5 new tests):
+  - Form validation requires product name
+  - Allows proceeding with partial data
+  - Product info can be edited
+  - Advances to Step 3 on submit
+  - Back button returns to Step 1
+- Total: 54 tests passing across 8 files

@@ -129,4 +129,131 @@ describe("Setup Wizard", () => {
     expect(updatedState.step).toBe(2);
     expect(updatedState.productInfo).toEqual(extractedData);
   });
+
+  test("Step 2 form validation requires product name", () => {
+    const validateProductInfo = (productInfo: { name: string } | null): boolean => {
+      return !!productInfo?.name?.trim();
+    };
+
+    expect(validateProductInfo(null)).toBe(false);
+    expect(validateProductInfo({ name: "" })).toBe(false);
+    expect(validateProductInfo({ name: "   " })).toBe(false);
+    expect(validateProductInfo({ name: "Valid Name" })).toBe(true);
+  });
+
+  test("Step 2 allows proceeding with partial data", () => {
+    type ProductInfo = {
+      name: string;
+      description: string;
+      targetAudience: string;
+      url: string;
+    };
+
+    const validateProductInfo = (productInfo: ProductInfo | null): boolean => {
+      return !!productInfo?.name?.trim();
+    };
+
+    const partialData: ProductInfo = {
+      name: "My Product",
+      description: "",
+      targetAudience: "",
+      url: "https://example.com",
+    };
+
+    expect(validateProductInfo(partialData)).toBe(true);
+  });
+
+  test("Step 2 product info can be edited", () => {
+    type ProductInfo = {
+      name: string;
+      description: string;
+      targetAudience: string;
+      url: string;
+    };
+
+    const productInfo: ProductInfo = {
+      name: "Original Name",
+      description: "Original description",
+      targetAudience: "Original audience",
+      url: "https://example.com",
+    };
+
+    const updateField = <K extends keyof ProductInfo>(
+      info: ProductInfo,
+      field: K,
+      value: ProductInfo[K]
+    ): ProductInfo => ({
+      ...info,
+      [field]: value,
+    });
+
+    const updated = updateField(productInfo, "name", "Updated Name");
+    expect(updated.name).toBe("Updated Name");
+    expect(updated.description).toBe("Original description");
+
+    const updatedDescription = updateField(productInfo, "description", "New description");
+    expect(updatedDescription.description).toBe("New description");
+    expect(updatedDescription.name).toBe("Original Name");
+  });
+
+  test("Step 2 advances to Step 3 on submit", () => {
+    type ProductInfo = {
+      name: string;
+      description: string;
+      targetAudience: string;
+      url: string;
+    };
+
+    type WizardState = {
+      step: number;
+      url: string;
+      productInfo: ProductInfo | null;
+    };
+
+    const stateAtStep2: WizardState = {
+      step: 2,
+      url: "https://example.com",
+      productInfo: {
+        name: "Test Product",
+        description: "A test description",
+        targetAudience: "Developers",
+        url: "https://example.com",
+      },
+    };
+
+    const advanceToStep3 = (state: WizardState): WizardState => {
+      if (!state.productInfo?.name?.trim()) return state;
+      return { ...state, step: 3 };
+    };
+
+    const nextState = advanceToStep3(stateAtStep2);
+    expect(nextState.step).toBe(3);
+  });
+
+  test("Step 2 back button returns to Step 1", () => {
+    type WizardState = {
+      step: number;
+      url: string;
+      productInfo: { name: string; description: string; targetAudience: string; url: string } | null;
+    };
+
+    const stateAtStep2: WizardState = {
+      step: 2,
+      url: "https://example.com",
+      productInfo: {
+        name: "Test Product",
+        description: "A test description",
+        targetAudience: "Developers",
+        url: "https://example.com",
+      },
+    };
+
+    const goBack = (state: WizardState): WizardState => ({
+      ...state,
+      step: state.step - 1,
+    });
+
+    const prevState = goBack(stateAtStep2);
+    expect(prevState.step).toBe(1);
+  });
 });

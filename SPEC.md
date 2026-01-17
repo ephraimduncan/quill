@@ -310,7 +310,7 @@ Mounted at `/api/*` via Next.js catch-all route.
 
 ### Phase 3: Product Setup Wizard
 - [x] Step 1: URL input + extraction API
-- [ ] Step 2: Product info form
+- [x] Step 2: Product info form
 - [ ] Step 3: Keyword generation + thread auto-preview
 - [ ] Step 4: Thread split view
 - [ ] Step 5: Save to DB + redirect to monitoring

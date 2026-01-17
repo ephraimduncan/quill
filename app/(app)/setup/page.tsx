@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation"
 import { ArrowLeft, ArrowRight, Globe } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { Textarea } from "@/components/ui/textarea"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Spinner } from "@/components/ui/spinner"
 
@@ -91,6 +92,12 @@ export default function SetupPage() {
     }
   }
 
+  const handleProductInfoSubmit = (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!state.productInfo?.name?.trim()) return
+    setState((prev) => ({ ...prev, step: 3 }))
+  }
+
   return (
     <div className="mx-auto max-w-2xl py-8 px-4">
       <div className="mb-8">
@@ -157,20 +164,78 @@ export default function SetupPage() {
             </CardDescription>
           </CardHeader>
           <CardContent>
-            <div className="space-y-4">
-              <p className="text-muted-foreground text-sm">
-                Step 2 will be implemented in the next phase.
-              </p>
-              <pre className="bg-muted p-4 rounded-lg text-xs overflow-auto">
-                {JSON.stringify(state.productInfo, null, 2)}
-              </pre>
+            <form onSubmit={handleProductInfoSubmit} className="space-y-4">
+              <div className="space-y-2">
+                <label htmlFor="name" className="text-sm font-medium">
+                  Product name
+                </label>
+                <Input
+                  id="name"
+                  value={state.productInfo?.name || ""}
+                  onChange={(e) =>
+                    setState((prev) => ({
+                      ...prev,
+                      productInfo: prev.productInfo
+                        ? { ...prev.productInfo, name: e.target.value }
+                        : null,
+                    }))
+                  }
+                  placeholder="My Product"
+                  required
+                />
+              </div>
+
+              <div className="space-y-2">
+                <label htmlFor="description" className="text-sm font-medium">
+                  Description
+                </label>
+                <Textarea
+                  id="description"
+                  value={state.productInfo?.description || ""}
+                  onChange={(e) =>
+                    setState((prev) => ({
+                      ...prev,
+                      productInfo: prev.productInfo
+                        ? { ...prev.productInfo, description: e.target.value }
+                        : null,
+                    }))
+                  }
+                  placeholder="Describe what your product does"
+                  rows={3}
+                />
+              </div>
+
+              <div className="space-y-2">
+                <label htmlFor="targetAudience" className="text-sm font-medium">
+                  Target audience
+                </label>
+                <Textarea
+                  id="targetAudience"
+                  value={state.productInfo?.targetAudience || ""}
+                  onChange={(e) =>
+                    setState((prev) => ({
+                      ...prev,
+                      productInfo: prev.productInfo
+                        ? { ...prev.productInfo, targetAudience: e.target.value }
+                        : null,
+                    }))
+                  }
+                  placeholder="Who is this product for?"
+                  rows={2}
+                />
+              </div>
+
               <div className="flex justify-between pt-2">
                 <Button type="button" variant="outline" onClick={handleBack}>
                   <ArrowLeft data-icon="inline-start" />
                   Back
                 </Button>
+                <Button type="submit" disabled={!state.productInfo?.name?.trim()}>
+                  Continue
+                  <ArrowRight data-icon="inline-end" />
+                </Button>
               </div>
-            </div>
+            </form>
           </CardContent>
         </Card>
       )}
