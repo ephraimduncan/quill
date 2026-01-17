@@ -316,7 +316,7 @@ Mounted at `/api/*` via Next.js catch-all route.
 - [x] Step 5: Save to DB + redirect to monitoring
 
 ### Phase 4: Response Flow
-- [ ] Response generation API
+- [x] Response generation API
 - [ ] Response editor panel
 - [ ] Reddit posting (client-side)
 - [ ] Toast notifications

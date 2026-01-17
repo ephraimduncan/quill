@@ -4,7 +4,7 @@ import { handle } from "hono/vercel";
 import { eq, count, and } from "drizzle-orm";
 import { JSDOM } from "jsdom";
 import { Readability } from "@mozilla/readability";
-import { generateObject } from "ai";
+import { generateObject, generateText } from "ai";
 import { openai } from "@ai-sdk/openai";
 import { z } from "zod";
 import { auth } from "@/lib/auth";
@@ -362,6 +362,74 @@ app.post("/threads/search", async (c) => {
   allThreads.sort((a, b) => b.createdUtc - a.createdUtc);
 
   return c.json({ threads: allThreads });
+});
+
+const generateResponseSchema = z.object({
+  thread: z.object({
+    title: z.string().min(1),
+    body: z.string(),
+    subreddit: z.string().min(1),
+  }),
+  product: z.object({
+    name: z.string().min(1),
+    description: z.string(),
+    targetAudience: z.string(),
+  }),
+});
+
+app.post("/response/generate", async (c) => {
+  const user = c.get("user");
+  if (!user) {
+    return c.json({ error: "Unauthorized" }, 401);
+  }
+
+  const body = await c.req.json();
+  const parsed = generateResponseSchema.safeParse(body);
+
+  if (!parsed.success) {
+    return c.json({ error: "Invalid request data" }, 400);
+  }
+
+  const { thread, product } = parsed.data;
+
+  const prompt = `You are helping a product maker engage authentically on Reddit. Write a helpful response to this Reddit post that naturally recommends their product as a solution.
+
+REDDIT POST:
+Subreddit: r/${thread.subreddit}
+Title: ${thread.title}
+${thread.body ? `Content: ${thread.body}` : ""}
+
+PRODUCT TO RECOMMEND:
+Name: ${product.name}
+${product.description ? `Description: ${product.description}` : ""}
+${product.targetAudience ? `Target Audience: ${product.targetAudience}` : ""}
+
+GUIDELINES:
+- Write approximately 200 words (this is a soft limit)
+- Be genuinely helpful first - address the user's question or problem
+- Naturally mention the product as one solution, not as a hard sell
+- Match the tone and style typical of the subreddit
+- Do not include any disclosure like "I'm affiliated with" or "I work for"
+- Do not use marketing speak or excessive enthusiasm
+- Be conversational and authentic, like a helpful community member
+- If relevant, share a brief personal experience or use case
+
+Write only the response text, nothing else.`;
+
+  try {
+    const { text } = await generateText({
+      model: openai("gpt-4o-mini"),
+      prompt,
+      temperature: 0.7,
+    });
+
+    return c.json({ response: text });
+  } catch (err) {
+    return c.json(
+      { error: `Failed to generate response: ${err instanceof Error ? err.message : "Unknown error"}` },
+      500
+    );
+  }
 });
 
 export const GET = handle(app);

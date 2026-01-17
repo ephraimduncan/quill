@@ -198,3 +198,22 @@
 - Updated test suite in `__tests__/setup.test.ts` (7 new tests):
   - Step 5 summary display, payload structure, redirect, error handling
 - Total: 105 tests passing across 11 files
+
+### Completed: Response generation API
+
+- Created POST `/api/response/generate` endpoint in `app/api/[[...route]]/route.ts`:
+  - Validates authentication and request schema with Zod
+  - Takes thread info (title, body, subreddit) and product info (name, description, targetAudience)
+  - Uses Vercel AI SDK `generateText` with GPT-4o-mini
+  - Prompt targets ~200 words with clear product recommendation style
+  - Uses temperature 0.7 for variation when regenerating
+  - Returns generated response text
+- Added `generateText` import from Vercel AI SDK
+- Added test suite in `__tests__/response.test.ts` (15 tests):
+  - Auth validation (401 for unauthenticated)
+  - Schema validation (missing thread, product, required fields)
+  - Valid input returns response
+  - Response mentions product name and subreddit
+  - Works with empty optional fields
+  - Schema validation tests
+- Total: 120 tests passing across 12 files
