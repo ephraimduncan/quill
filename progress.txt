@@ -8,3 +8,15 @@
 - Added `/api/health` endpoint for testing
 - Added test suite in `__tests__/api.test.ts` (3 tests, all passing)
 - Added `test` script to package.json using Bun's built-in test runner
+
+### Completed: Setup Drizzle + Turso schema
+
+- Installed drizzle-orm v0.45.1, @libsql/client v0.17.0, drizzle-kit v0.31.8
+- Created schema at `lib/db/schema.ts` with tables: users, products, keywords, threads, postHistory
+- Schema includes foreign keys with cascade delete where specified
+- Created db connection module at `lib/db/index.ts`
+- Created `drizzle.config.ts` for migrations (turso dialect)
+- Added db scripts to package.json: db:generate, db:migrate, db:push, db:studio
+- Created `.env.example` with TURSO_DATABASE_URL and TURSO_AUTH_TOKEN
+- Added test suite in `__tests__/db.test.ts` (6 tests, all passing)
+- Total: 9 tests passing across 2 files
