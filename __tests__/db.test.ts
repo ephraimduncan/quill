@@ -94,7 +94,16 @@ beforeAll(async () => {
       created_utc INTEGER NOT NULL,
       discovered_at INTEGER NOT NULL,
       status TEXT NOT NULL DEFAULT 'active',
-      is_new INTEGER NOT NULL DEFAULT 1
+      is_new INTEGER NOT NULL DEFAULT 1,
+      matched_keyword TEXT
+    )
+  `);
+
+  await client.execute(`
+    CREATE TABLE reddit_sync_state (
+      id TEXT PRIMARY KEY DEFAULT 'global',
+      last_post_id TEXT NOT NULL,
+      updated_at INTEGER NOT NULL
     )
   `);
 

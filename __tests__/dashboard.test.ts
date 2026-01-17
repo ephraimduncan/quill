@@ -91,7 +91,8 @@ beforeAll(async () => {
       created_utc INTEGER NOT NULL,
       discovered_at INTEGER NOT NULL,
       status TEXT NOT NULL DEFAULT 'active',
-      is_new INTEGER NOT NULL DEFAULT 1
+      is_new INTEGER NOT NULL DEFAULT 1,
+      matched_keyword TEXT
     )
   `);
 });

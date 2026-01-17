@@ -8,7 +8,9 @@ import { generateObject, generateText } from "ai";
 import { openai } from "@ai-sdk/openai";
 import { z } from "zod";
 import { auth } from "@/lib/auth";
-import { db, products, threads, keywords, account, postHistory } from "@/lib/db";
+import { db, products, threads, keywords, account, postHistory, redditSyncState } from "@/lib/db";
+import { fetchLatestPostId, batchFetchPosts, generateIdRange, base36ToNumber } from "@/lib/reddit/id-fetcher";
+import { buildMatcher, type KeywordEntry } from "@/lib/reddit/keyword-matcher";
 
 type Variables = {
   user: typeof auth.$Infer.Session.user | null;
@@ -769,123 +771,132 @@ app.get("/cron/discover", async (c) => {
     return c.json({ error: "Unauthorized" }, 401);
   }
 
-  const allProducts = await db.select().from(products);
+  const latestPostId = await fetchLatestPostId();
+  if (!latestPostId) {
+    return c.json({ error: "Failed to fetch latest Reddit post ID" }, 500);
+  }
 
+  const [syncState] = await db.select().from(redditSyncState).where(eq(redditSyncState.id, "global"));
+  const lastPostId = syncState?.lastPostId;
+
+  if (!lastPostId) {
+    const now = Math.floor(Date.now() / 1000);
+    await db.insert(redditSyncState).values({
+      id: "global",
+      lastPostId: latestPostId,
+      updatedAt: now,
+    });
+    return c.json({
+      success: true,
+      message: "Initialized sync state with latest post ID",
+      lastPostId: latestPostId,
+      postsProcessed: 0,
+      newThreadsFound: 0,
+    });
+  }
+
+  if (base36ToNumber(latestPostId) <= base36ToNumber(lastPostId)) {
+    return c.json({
+      success: true,
+      message: "No new posts since last sync",
+      postsProcessed: 0,
+      newThreadsFound: 0,
+    });
+  }
+
+  const allKeywords = await db
+    .select({ keyword: keywords.keyword, productId: keywords.productId })
+    .from(keywords);
+
+  if (allKeywords.length === 0) {
+    const now = Math.floor(Date.now() / 1000);
+    await db
+      .update(redditSyncState)
+      .set({ lastPostId: latestPostId, updatedAt: now })
+      .where(eq(redditSyncState.id, "global"));
+    return c.json({
+      success: true,
+      message: "No keywords configured",
+      postsProcessed: 0,
+      newThreadsFound: 0,
+    });
+  }
+
+  const keywordEntries: KeywordEntry[] = allKeywords.map((k) => ({
+    keyword: k.keyword,
+    productId: k.productId,
+  }));
+  const matcher = buildMatcher(keywordEntries);
+
+  const idsToFetch = generateIdRange(lastPostId, latestPostId, 100);
+  const posts = await batchFetchPosts(idsToFetch);
+
+  const existingThreads = await db
+    .select({ redditThreadId: threads.redditThreadId, productId: threads.productId })
+    .from(threads);
+  const existingSet = new Set(existingThreads.map((t) => `${t.productId}:${t.redditThreadId}`));
+
+  const sevenDaysAgo = Math.floor(Date.now() / 1000) - 7 * 24 * 60 * 60;
+  const now = Math.floor(Date.now() / 1000);
   let totalNewThreads = 0;
-  const errors: Array<{ productId: string; error: string }> = [];
 
-  for (const product of allProducts) {
-    const productKeywords = await db
-      .select()
-      .from(keywords)
-      .where(eq(keywords.productId, product.id));
+  const threadsToInsert: Array<{
+    id: string;
+    productId: string;
+    redditThreadId: string;
+    title: string;
+    bodyPreview: string;
+    subreddit: string;
+    url: string;
+    createdUtc: number;
+    discoveredAt: number;
+    status: "active";
+    isNew: true;
+    matchedKeyword: string;
+  }> = [];
 
-    if (productKeywords.length === 0) continue;
+  for (const post of posts) {
+    if (post.created_utc < sevenDaysAgo) continue;
 
-    const existingThreads = await db
-      .select({ redditThreadId: threads.redditThreadId })
-      .from(threads)
-      .where(eq(threads.productId, product.id));
+    const textToMatch = `${post.title} ${post.selftext}`;
+    const matches = matcher.match(textToMatch);
 
-    const existingIds = new Set(existingThreads.map((t) => t.redditThreadId));
-    const sevenDaysAgo = Math.floor(Date.now() / 1000) - 7 * 24 * 60 * 60;
-    const seenIds = new Set<string>();
-    const newThreads: Array<{
-      redditThreadId: string;
-      title: string;
-      bodyPreview: string;
-      subreddit: string;
-      url: string;
-      createdUtc: number;
-    }> = [];
+    for (const match of matches) {
+      const key = `${match.productId}:${post.id}`;
+      if (existingSet.has(key)) continue;
+      existingSet.add(key);
 
-    for (const kw of productKeywords) {
-      const maxRetries = 3;
-      let attempt = 0;
-      let success = false;
-
-      while (attempt < maxRetries && !success) {
-        attempt++;
-        try {
-          const searchUrl = new URL("https://www.reddit.com/search.json");
-          searchUrl.searchParams.set("q", kw.keyword);
-          searchUrl.searchParams.set("sort", "new");
-          searchUrl.searchParams.set("limit", "10");
-          searchUrl.searchParams.set("t", "week");
-          searchUrl.searchParams.set("type", "link");
-
-          const response = await fetch(searchUrl.toString(), {
-            headers: { "User-Agent": "RedditAgent/1.0" },
-          });
-
-          if (!response.ok) {
-            if (attempt === maxRetries) {
-              errors.push({
-                productId: product.id,
-                error: `Failed to search keyword "${kw.keyword}": ${response.status}`,
-              });
-            }
-            continue;
-          }
-
-          const data = await response.json();
-          const posts = data?.data?.children || [];
-
-          for (const post of posts) {
-            const thread = post.data as RedditThread;
-            if (seenIds.has(thread.id)) continue;
-            if (existingIds.has(thread.id)) continue;
-            if (thread.created_utc < sevenDaysAgo) continue;
-
-            seenIds.add(thread.id);
-            newThreads.push({
-              redditThreadId: thread.id,
-              title: thread.title,
-              bodyPreview: (thread.selftext || "").slice(0, 200),
-              subreddit: thread.subreddit,
-              url: `https://reddit.com${thread.permalink}`,
-              createdUtc: thread.created_utc,
-            });
-          }
-
-          success = true;
-        } catch (err) {
-          if (attempt === maxRetries) {
-            errors.push({
-              productId: product.id,
-              error: `Failed to search keyword "${kw.keyword}": ${err instanceof Error ? err.message : "Unknown error"}`,
-            });
-          }
-        }
-      }
-    }
-
-    if (newThreads.length > 0) {
-      const now = Math.floor(Date.now() / 1000);
-      await db.insert(threads).values(
-        newThreads.map((thread) => ({
-          id: randomUUID(),
-          productId: product.id,
-          redditThreadId: thread.redditThreadId,
-          title: thread.title,
-          bodyPreview: thread.bodyPreview,
-          subreddit: thread.subreddit,
-          url: thread.url,
-          createdUtc: thread.createdUtc,
-          discoveredAt: now,
-          status: "active" as const,
-          isNew: true,
-        }))
-      );
-      totalNewThreads += newThreads.length;
+      threadsToInsert.push({
+        id: randomUUID(),
+        productId: match.productId,
+        redditThreadId: post.id,
+        title: post.title,
+        bodyPreview: post.selftext.slice(0, 200),
+        subreddit: post.subreddit,
+        url: `https://reddit.com${post.permalink}`,
+        createdUtc: post.created_utc,
+        discoveredAt: now,
+        status: "active",
+        isNew: true,
+        matchedKeyword: match.keyword,
+      });
     }
   }
 
+  if (threadsToInsert.length > 0) {
+    await db.insert(threads).values(threadsToInsert);
+    totalNewThreads = threadsToInsert.length;
+  }
+
+  await db
+    .update(redditSyncState)
+    .set({ lastPostId: latestPostId, updatedAt: now })
+    .where(eq(redditSyncState.id, "global"));
+
   return c.json({
     success: true,
-    productsProcessed: allProducts.length,
+    postsProcessed: posts.length,
     newThreadsFound: totalNewThreads,
-    errors: errors.length > 0 ? errors : undefined,
   });
 });
 

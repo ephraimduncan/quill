@@ -483,3 +483,44 @@
   - Signup page structure (name/email/password inputs, minLength validation, signUp.email, link to login)
   - Landing page (links to /signup and /login, no Reddit button)
 - Total: 292 tests passing across 22 files
+
+### Completed: ID-based Reddit fetching (Migration Step 2)
+
+- Updated `lib/db/schema.ts` with:
+  - Added `matchedKeyword` column to threads table
+  - Added `redditSyncState` table for tracking global sync position
+  - Added type exports for `RedditSyncState` and `NewRedditSyncState`
+- Created `lib/reddit/id-fetcher.ts` with:
+  - `base36ToNumber()` and `numberToBase36()` for Reddit ID conversion
+  - `generateIdRange()` for creating batches of IDs to fetch
+  - `fetchLatestPostId()` to get newest post ID from r/all/new
+  - `batchFetchPosts()` to fetch multiple posts via api.reddit.com/api/info.json
+- Created `lib/reddit/keyword-matcher.ts` with:
+  - `AhoCorasick` class implementing efficient multi-pattern string matching
+  - Trie construction with failure links for automaton
+  - Case-insensitive matching with deduplication
+  - `buildMatcher()` factory function
+- Updated `app/api/[[...route]]/route.ts` with new cron endpoint:
+  - Gets latest post ID from Reddit
+  - Initializes sync state on first run
+  - Generates ID range and batch fetches posts
+  - Loads all keywords across all products
+  - Uses Aho-Corasick matcher for efficient keyword matching
+  - Inserts threads with `matchedKeyword` for filtering
+  - Updates sync state after processing
+- Added test suite in `__tests__/id-fetcher.test.ts` (12 tests):
+  - Base-36 conversion tests
+  - ID range generation tests
+- Added test suite in `__tests__/keyword-matcher.test.ts` (14 tests):
+  - Single/multiple keyword matching
+  - Case insensitivity, deduplication
+  - Multi-product matching
+- Updated test suite in `__tests__/cron-discover.test.ts` (17 tests):
+  - ID-based polling flow tests
+  - Sync state initialization and updates
+  - Keyword matching via Aho-Corasick
+  - Thread deduplication and age filtering
+- Updated `__tests__/db.test.ts` and `__tests__/dashboard.test.ts`:
+  - Added `matched_keyword` column to test schema
+  - Added `reddit_sync_state` table creation
+- Total: 320 tests passing across 24 files

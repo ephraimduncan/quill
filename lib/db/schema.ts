@@ -39,6 +39,13 @@ export const threads = sqliteTable("threads", {
     .notNull()
     .default("active"),
   isNew: integer("is_new", { mode: "boolean" }).notNull().default(true),
+  matchedKeyword: text("matched_keyword"),
+});
+
+export const redditSyncState = sqliteTable("reddit_sync_state", {
+  id: text("id").primaryKey().default("global"),
+  lastPostId: text("last_post_id").notNull(),
+  updatedAt: integer("updated_at").notNull(),
 });
 
 export const postHistory = sqliteTable("post_history", {
@@ -67,3 +74,5 @@ export type Thread = typeof threads.$inferSelect;
 export type NewThread = typeof threads.$inferInsert;
 export type PostHistory = typeof postHistory.$inferSelect;
 export type NewPostHistory = typeof postHistory.$inferInsert;
+export type RedditSyncState = typeof redditSyncState.$inferSelect;
+export type NewRedditSyncState = typeof redditSyncState.$inferInsert;

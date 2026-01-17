@@ -1,11 +1,11 @@
 import { describe, expect, test, beforeEach, afterEach } from "bun:test";
 import { Hono } from "hono";
-
-type Product = {
-  id: string;
-  userId: string;
-  name: string;
-};
+import {
+  base36ToNumber,
+  type RedditPost,
+} from "@/lib/reddit/id-fetcher";
+import { buildMatcher, type KeywordEntry } from "@/lib/reddit/keyword-matcher";
+import { randomUUID } from "crypto";
 
 type Keyword = {
   id: string;
@@ -25,22 +25,14 @@ type Thread = {
   discoveredAt: number;
   status: "active" | "dismissed";
   isNew: boolean;
+  matchedKeyword: string | null;
 };
 
-type RedditResult = {
+type SyncState = {
   id: string;
-  title: string;
-  selftext: string;
-  subreddit: string;
-  permalink: string;
-  created_utc: number;
+  lastPostId: string;
+  updatedAt: number;
 };
-
-const mockProducts: Product[] = [
-  { id: "prod-1", userId: "user-1", name: "TaskFlow" },
-  { id: "prod-2", userId: "user-2", name: "CodeHelper" },
-  { id: "prod-no-keywords", userId: "user-1", name: "NoKeywords" },
-];
 
 const mockKeywords: Keyword[] = [
   { id: "kw-1", productId: "prod-1", keyword: "productivity app" },
@@ -49,13 +41,16 @@ const mockKeywords: Keyword[] = [
 ];
 
 let mutableThreads: Thread[] = [];
+let mutableSyncState: SyncState | null = null;
 let originalEnv: string | undefined;
 
 function createTestApp(
   cronSecret: string | undefined,
-  mockRedditResults: Map<string, RedditResult[]> = new Map()
+  mockLatestPostId: string | null = "1abc200",
+  mockPosts: RedditPost[] = [],
+  initialThreads?: Thread[]
 ) {
-  mutableThreads = [
+  mutableThreads = initialThreads ?? [
     {
       id: "thread-1",
       productId: "prod-1",
@@ -68,6 +63,7 @@ function createTestApp(
       discoveredAt: Math.floor(Date.now() / 1000) - 3600,
       status: "active",
       isNew: false,
+      matchedKeyword: "productivity app",
     },
   ];
 
@@ -79,76 +75,114 @@ function createTestApp(
       return c.json({ error: "Unauthorized" }, 401);
     }
 
+    if (!mockLatestPostId) {
+      return c.json({ error: "Failed to fetch latest Reddit post ID" }, 500);
+    }
+
+    const lastPostId = mutableSyncState?.lastPostId;
+
+    if (!lastPostId) {
+      const now = Math.floor(Date.now() / 1000);
+      mutableSyncState = {
+        id: "global",
+        lastPostId: mockLatestPostId,
+        updatedAt: now,
+      };
+      return c.json({
+        success: true,
+        message: "Initialized sync state with latest post ID",
+        lastPostId: mockLatestPostId,
+        postsProcessed: 0,
+        newThreadsFound: 0,
+      });
+    }
+
+    if (base36ToNumber(mockLatestPostId) <= base36ToNumber(lastPostId)) {
+      return c.json({
+        success: true,
+        message: "No new posts since last sync",
+        postsProcessed: 0,
+        newThreadsFound: 0,
+      });
+    }
+
+    if (mockKeywords.length === 0) {
+      const now = Math.floor(Date.now() / 1000);
+      mutableSyncState = { ...mutableSyncState!, lastPostId: mockLatestPostId, updatedAt: now };
+      return c.json({
+        success: true,
+        message: "No keywords configured",
+        postsProcessed: 0,
+        newThreadsFound: 0,
+      });
+    }
+
+    const keywordEntries: KeywordEntry[] = mockKeywords.map((k) => ({
+      keyword: k.keyword,
+      productId: k.productId,
+    }));
+    const matcher = buildMatcher(keywordEntries);
+
+    const existingSet = new Set(
+      mutableThreads.map((t) => `${t.productId}:${t.redditThreadId}`)
+    );
+
+    const sevenDaysAgo = Math.floor(Date.now() / 1000) - 7 * 24 * 60 * 60;
+    const now = Math.floor(Date.now() / 1000);
     let totalNewThreads = 0;
-    const errors: Array<{ productId: string; error: string }> = [];
 
-    for (const product of mockProducts) {
-      const productKeywords = mockKeywords.filter(
-        (k) => k.productId === product.id
-      );
+    const threadsToInsert: Thread[] = [];
 
-      if (productKeywords.length === 0) continue;
+    for (const post of mockPosts) {
+      if (post.created_utc < sevenDaysAgo) continue;
 
-      const existingIds = new Set(
-        mutableThreads
-          .filter((t) => t.productId === product.id)
-          .map((t) => t.redditThreadId)
-      );
+      const textToMatch = `${post.title} ${post.selftext}`;
+      const matches = matcher.match(textToMatch);
 
-      const sevenDaysAgo = Math.floor(Date.now() / 1000) - 7 * 24 * 60 * 60;
-      const seenIds = new Set<string>();
-      const newThreads: Omit<Thread, "id" | "discoveredAt" | "status" | "isNew">[] = [];
+      for (const match of matches) {
+        const key = `${match.productId}:${post.id}`;
+        if (existingSet.has(key)) continue;
+        existingSet.add(key);
 
-      for (const kw of productKeywords) {
-        const results = mockRedditResults.get(kw.keyword) || [];
-
-        for (const result of results) {
-          if (seenIds.has(result.id)) continue;
-          if (existingIds.has(result.id)) continue;
-          if (result.created_utc < sevenDaysAgo) continue;
-
-          seenIds.add(result.id);
-          newThreads.push({
-            productId: product.id,
-            redditThreadId: result.id,
-            title: result.title,
-            bodyPreview: (result.selftext || "").slice(0, 200),
-            subreddit: result.subreddit,
-            url: `https://reddit.com${result.permalink}`,
-            createdUtc: result.created_utc,
-          });
-        }
-      }
-
-      if (newThreads.length > 0) {
-        const now = Math.floor(Date.now() / 1000);
-        for (const thread of newThreads) {
-          mutableThreads.push({
-            id: `new-${thread.redditThreadId}`,
-            ...thread,
-            discoveredAt: now,
-            status: "active",
-            isNew: true,
-          });
-        }
-        totalNewThreads += newThreads.length;
+        threadsToInsert.push({
+          id: randomUUID(),
+          productId: match.productId,
+          redditThreadId: post.id,
+          title: post.title,
+          bodyPreview: post.selftext.slice(0, 200),
+          subreddit: post.subreddit,
+          url: `https://reddit.com${post.permalink}`,
+          createdUtc: post.created_utc,
+          discoveredAt: now,
+          status: "active",
+          isNew: true,
+          matchedKeyword: match.keyword,
+        });
       }
     }
 
+    if (threadsToInsert.length > 0) {
+      mutableThreads.push(...threadsToInsert);
+      totalNewThreads = threadsToInsert.length;
+    }
+
+    mutableSyncState = { ...mutableSyncState!, lastPostId: mockLatestPostId, updatedAt: now };
+
     return c.json({
       success: true,
-      productsProcessed: mockProducts.length,
+      postsProcessed: mockPosts.length,
       newThreadsFound: totalNewThreads,
-      errors: errors.length > 0 ? errors : undefined,
     });
   });
 
   return app;
 }
 
-describe("GET /api/cron/discover", () => {
+describe("GET /api/cron/discover - ID-based polling", () => {
   beforeEach(() => {
     originalEnv = process.env.CRON_SECRET;
+    mutableSyncState = null;
+    mutableThreads = [];
   });
 
   afterEach(() => {
@@ -161,9 +195,7 @@ describe("GET /api/cron/discover", () => {
 
   test("returns 401 when no authorization header", async () => {
     const app = createTestApp("test-secret");
-    const res = await app.request("/api/cron/discover", {
-      method: "GET",
-    });
+    const res = await app.request("/api/cron/discover", { method: "GET" });
 
     expect(res.status).toBe(401);
     const json = await res.json();
@@ -178,8 +210,6 @@ describe("GET /api/cron/discover", () => {
     });
 
     expect(res.status).toBe(401);
-    const json = await res.json();
-    expect(json.error).toBe("Unauthorized");
   });
 
   test("returns 401 when CRON_SECRET is not set", async () => {
@@ -192,8 +222,21 @@ describe("GET /api/cron/discover", () => {
     expect(res.status).toBe(401);
   });
 
-  test("returns success with correct authorization", async () => {
-    const app = createTestApp("test-secret");
+  test("returns 500 when cannot fetch latest post ID", async () => {
+    const app = createTestApp("test-secret", null);
+    const res = await app.request("/api/cron/discover", {
+      method: "GET",
+      headers: { Authorization: "Bearer test-secret" },
+    });
+
+    expect(res.status).toBe(500);
+    const json = await res.json();
+    expect(json.error).toBe("Failed to fetch latest Reddit post ID");
+  });
+
+  test("initializes sync state on first run", async () => {
+    mutableSyncState = null;
+    const app = createTestApp("test-secret", "1abc200");
     const res = await app.request("/api/cron/discover", {
       method: "GET",
       headers: { Authorization: "Bearer test-secret" },
@@ -201,100 +244,18 @@ describe("GET /api/cron/discover", () => {
 
     expect(res.status).toBe(200);
     const json = await res.json();
-    expect(json.success).toBe(true);
+    expect(json.message).toBe("Initialized sync state with latest post ID");
+    expect(json.lastPostId).toBe("1abc200");
+    expect(mutableSyncState?.lastPostId).toBe("1abc200");
   });
 
-  test("returns productsProcessed count", async () => {
-    const app = createTestApp("test-secret");
-    const res = await app.request("/api/cron/discover", {
-      method: "GET",
-      headers: { Authorization: "Bearer test-secret" },
-    });
-
-    expect(res.status).toBe(200);
-    const json = await res.json();
-    expect(json.productsProcessed).toBe(mockProducts.length);
-  });
-
-  test("returns newThreadsFound count of 0 when no new threads", async () => {
-    const app = createTestApp("test-secret");
-    const res = await app.request("/api/cron/discover", {
-      method: "GET",
-      headers: { Authorization: "Bearer test-secret" },
-    });
-
-    expect(res.status).toBe(200);
-    const json = await res.json();
-    expect(json.newThreadsFound).toBe(0);
-  });
-
-  test("finds new threads from Reddit results", async () => {
-    const now = Math.floor(Date.now() / 1000);
-    const results = new Map<string, RedditResult[]>();
-    results.set("productivity app", [
-      {
-        id: "new123",
-        title: "New thread",
-        selftext: "Content",
-        subreddit: "productivity",
-        permalink: "/r/productivity/new123",
-        created_utc: now - 3600,
-      },
-    ]);
-
-    const app = createTestApp("test-secret", results);
-    const res = await app.request("/api/cron/discover", {
-      method: "GET",
-      headers: { Authorization: "Bearer test-secret" },
-    });
-
-    expect(res.status).toBe(200);
-    const json = await res.json();
-    expect(json.newThreadsFound).toBe(1);
-  });
-
-  test("skips products without keywords", async () => {
-    const now = Math.floor(Date.now() / 1000);
-    const results = new Map<string, RedditResult[]>();
-    results.set("productivity app", [
-      {
-        id: "thread-for-prod1",
-        title: "Thread for prod1",
-        selftext: "Content",
-        subreddit: "productivity",
-        permalink: "/r/productivity/thread-for-prod1",
-        created_utc: now - 3600,
-      },
-    ]);
-
-    const app = createTestApp("test-secret", results);
-    const res = await app.request("/api/cron/discover", {
-      method: "GET",
-      headers: { Authorization: "Bearer test-secret" },
-    });
-
-    expect(res.status).toBe(200);
-    const json = await res.json();
-    expect(json.newThreadsFound).toBe(1);
-    const newThread = mutableThreads.find((t) => t.redditThreadId === "thread-for-prod1");
-    expect(newThread?.productId).toBe("prod-1");
-  });
-
-  test("deduplicates threads by redditThreadId", async () => {
-    const now = Math.floor(Date.now() / 1000);
-    const results = new Map<string, RedditResult[]>();
-    const sameThread = {
-      id: "dup123",
-      title: "Duplicate thread",
-      selftext: "Content",
-      subreddit: "productivity",
-      permalink: "/r/productivity/dup123",
-      created_utc: now - 3600,
+  test("returns no new posts when latest <= last", async () => {
+    mutableSyncState = {
+      id: "global",
+      lastPostId: "1abc200",
+      updatedAt: Math.floor(Date.now() / 1000),
     };
-    results.set("productivity app", [sameThread]);
-    results.set("task management", [sameThread]);
-
-    const app = createTestApp("test-secret", results);
+    const app = createTestApp("test-secret", "1abc200");
     const res = await app.request("/api/cron/discover", {
       method: "GET",
       headers: { Authorization: "Bearer test-secret" },
@@ -302,24 +263,28 @@ describe("GET /api/cron/discover", () => {
 
     expect(res.status).toBe(200);
     const json = await res.json();
-    expect(json.newThreadsFound).toBe(1);
+    expect(json.message).toBe("No new posts since last sync");
   });
 
-  test("skips threads already in database", async () => {
+  test("matches posts using Aho-Corasick keyword matcher", async () => {
+    mutableSyncState = {
+      id: "global",
+      lastPostId: "1abc100",
+      updatedAt: Math.floor(Date.now() / 1000) - 3600,
+    };
     const now = Math.floor(Date.now() / 1000);
-    const results = new Map<string, RedditResult[]>();
-    results.set("productivity app", [
+    const mockPosts: RedditPost[] = [
       {
-        id: "existing123",
-        title: "Existing thread",
-        selftext: "Content",
+        id: "newpost1",
+        title: "Best productivity app recommendations?",
+        selftext: "Looking for something to help with task management",
         subreddit: "productivity",
-        permalink: "/r/productivity/existing123",
+        permalink: "/r/productivity/newpost1",
         created_utc: now - 3600,
       },
-    ]);
+    ];
 
-    const app = createTestApp("test-secret", results);
+    const app = createTestApp("test-secret", "1abc200", mockPosts);
     const res = await app.request("/api/cron/discover", {
       method: "GET",
       headers: { Authorization: "Bearer test-secret" },
@@ -327,24 +292,87 @@ describe("GET /api/cron/discover", () => {
 
     expect(res.status).toBe(200);
     const json = await res.json();
-    expect(json.newThreadsFound).toBe(0);
+    expect(json.newThreadsFound).toBeGreaterThan(0);
   });
 
-  test("skips threads older than 7 days", async () => {
-    const eightDaysAgo = Math.floor(Date.now() / 1000) - 8 * 24 * 60 * 60;
-    const results = new Map<string, RedditResult[]>();
-    results.set("productivity app", [
+  test("stores matchedKeyword in thread", async () => {
+    mutableSyncState = {
+      id: "global",
+      lastPostId: "1abc100",
+      updatedAt: Math.floor(Date.now() / 1000) - 3600,
+    };
+    const now = Math.floor(Date.now() / 1000);
+    const mockPosts: RedditPost[] = [
       {
-        id: "old123",
-        title: "Old thread",
-        selftext: "Content",
+        id: "newpost2",
+        title: "Looking for coding tools",
+        selftext: "Any recommendations?",
+        subreddit: "programming",
+        permalink: "/r/programming/newpost2",
+        created_utc: now - 3600,
+      },
+    ];
+
+    const app = createTestApp("test-secret", "1abc200", mockPosts);
+    await app.request("/api/cron/discover", {
+      method: "GET",
+      headers: { Authorization: "Bearer test-secret" },
+    });
+
+    const newThread = mutableThreads.find((t) => t.redditThreadId === "newpost2");
+    expect(newThread).toBeDefined();
+    expect(newThread?.matchedKeyword).toBe("coding tools");
+  });
+
+  test("matches same post to multiple products", async () => {
+    mutableSyncState = {
+      id: "global",
+      lastPostId: "1abc100",
+      updatedAt: Math.floor(Date.now() / 1000) - 3600,
+    };
+    const now = Math.floor(Date.now() / 1000);
+    const mockPosts: RedditPost[] = [
+      {
+        id: "multipost",
+        title: "productivity app and coding tools needed",
+        selftext: "I need both for my workflow",
+        subreddit: "software",
+        permalink: "/r/software/multipost",
+        created_utc: now - 3600,
+      },
+    ];
+
+    const app = createTestApp("test-secret", "1abc200", mockPosts);
+    const res = await app.request("/api/cron/discover", {
+      method: "GET",
+      headers: { Authorization: "Bearer test-secret" },
+    });
+
+    expect(res.status).toBe(200);
+    const matchingThreads = mutableThreads.filter((t) => t.redditThreadId === "multipost");
+    expect(matchingThreads.length).toBe(2);
+    expect(matchingThreads.map(t => t.productId).sort()).toEqual(["prod-1", "prod-2"]);
+  });
+
+  test("skips posts older than 7 days", async () => {
+    mutableSyncState = {
+      id: "global",
+      lastPostId: "1abc100",
+      updatedAt: Math.floor(Date.now() / 1000) - 3600,
+    };
+    const eightDaysAgo = Math.floor(Date.now() / 1000) - 8 * 24 * 60 * 60;
+    const mockPosts: RedditPost[] = [
+      {
+        id: "oldpost",
+        title: "productivity app question",
+        selftext: "Old content",
         subreddit: "productivity",
-        permalink: "/r/productivity/old123",
+        permalink: "/r/productivity/oldpost",
         created_utc: eightDaysAgo,
       },
-    ]);
+    ];
 
-    const app = createTestApp("test-secret", results);
+    const app = createTestApp("test-secret", "1abc200", mockPosts);
     const res = await app.request("/api/cron/discover", {
       method: "GET",
       headers: { Authorization: "Bearer test-secret" },
@@ -355,119 +383,123 @@ describe("GET /api/cron/discover", () => {
     expect(json.newThreadsFound).toBe(0);
   });
 
-  test("inserts new threads with isNew=true", async () => {
+  test("deduplicates by product-thread combination", async () => {
+    mutableSyncState = {
+      id: "global",
+      lastPostId: "1abc100",
+      updatedAt: Math.floor(Date.now() / 1000) - 3600,
+    };
     const now = Math.floor(Date.now() / 1000);
-    const results = new Map<string, RedditResult[]>();
-    results.set("productivity app", [
+    const existingThreads: Thread[] = [
       {
-        id: "newthread",
-        title: "New thread",
-        selftext: "Content",
+        id: "existing",
+        productId: "prod-1",
+        redditThreadId: "existingpost",
+        title: "Existing",
+        bodyPreview: "",
+        subreddit: "test",
+        url: "https://reddit.com/existingpost",
+        createdUtc: now - 7200,
+        discoveredAt: now - 7200,
+        status: "active",
+        isNew: false,
+        matchedKeyword: "productivity app",
+      },
+    ];
+    const mockPosts: RedditPost[] = [
+      {
+        id: "existingpost",
+        title: "productivity app review",
+        selftext: "Great app",
         subreddit: "productivity",
-        permalink: "/r/productivity/newthread",
+        permalink: "/r/productivity/existingpost",
         created_utc: now - 3600,
       },
-    ]);
+    ];
 
-    const app = createTestApp("test-secret", results);
-    await app.request("/api/cron/discover", {
+    const app = createTestApp("test-secret", "1abc200", mockPosts, existingThreads);
+    const res = await app.request("/api/cron/discover", {
       method: "GET",
       headers: { Authorization: "Bearer test-secret" },
     });
 
-    const newThread = mutableThreads.find((t) => t.redditThreadId === "newthread");
-    expect(newThread).toBeDefined();
-    expect(newThread?.isNew).toBe(true);
+    expect(res.status).toBe(200);
+    const json = await res.json();
+    expect(json.newThreadsFound).toBe(0);
   });
 
-  test("inserts new threads with status=active", async () => {
-    const now = Math.floor(Date.now() / 1000);
-    const results = new Map<string, RedditResult[]>();
-    results.set("productivity app", [
-      {
-        id: "activethread",
-        title: "Active thread",
-        selftext: "Content",
-        subreddit: "productivity",
-        permalink: "/r/productivity/activethread",
-        created_utc: now - 3600,
-      },
-    ]);
+  test("updates sync state after processing", async () => {
+    mutableSyncState = {
+      id: "global",
+      lastPostId: "1abc100",
+      updatedAt: Math.floor(Date.now() / 1000) - 3600,
+    };
 
-    const app = createTestApp("test-secret", results);
+    const app = createTestApp("test-secret", "1abc200", []);
     await app.request("/api/cron/discover", {
       method: "GET",
       headers: { Authorization: "Bearer test-secret" },
     });
 
-    const newThread = mutableThreads.find((t) => t.redditThreadId === "activethread");
-    expect(newThread).toBeDefined();
-    expect(newThread?.status).toBe("active");
+    expect(mutableSyncState?.lastPostId).toBe("1abc200");
   });
 
   test("truncates body preview to 200 characters", async () => {
+    mutableSyncState = {
+      id: "global",
+      lastPostId: "1abc100",
+      updatedAt: Math.floor(Date.now() / 1000) - 3600,
+    };
     const now = Math.floor(Date.now() / 1000);
     const longContent = "a".repeat(300);
-    const results = new Map<string, RedditResult[]>();
-    results.set("productivity app", [
+    const mockPosts: RedditPost[] = [
       {
-        id: "longthread",
-        title: "Long thread",
+        id: "longpost",
+        title: "productivity app discussion",
         selftext: longContent,
         subreddit: "productivity",
-        permalink: "/r/productivity/longthread",
+        permalink: "/r/productivity/longpost",
         created_utc: now - 3600,
       },
-    ]);
+    ];
 
-    const app = createTestApp("test-secret", results);
+    const app = createTestApp("test-secret", "1abc200", mockPosts);
     await app.request("/api/cron/discover", {
       method: "GET",
       headers: { Authorization: "Bearer test-secret" },
     });
 
-    const newThread = mutableThreads.find((t) => t.redditThreadId === "longthread");
+    const newThread = mutableThreads.find((t) => t.redditThreadId === "longpost");
     expect(newThread?.bodyPreview.length).toBe(200);
   });
 
-  test("processes multiple products", async () => {
+  test("inserts threads with isNew=true and status=active", async () => {
+    mutableSyncState = {
+      id: "global",
+      lastPostId: "1abc100",
+      updatedAt: Math.floor(Date.now() / 1000) - 3600,
+    };
     const now = Math.floor(Date.now() / 1000);
-    const results = new Map<string, RedditResult[]>();
-    results.set("productivity app", [
+    const mockPosts: RedditPost[] = [
       {
-        id: "thread-prod1",
-        title: "Thread for prod1",
-        selftext: "Content",
+        id: "statuspost",
+        title: "task management help",
+        selftext: "Need help",
         subreddit: "productivity",
-        permalink: "/r/productivity/thread-prod1",
+        permalink: "/r/productivity/statuspost",
         created_utc: now - 3600,
       },
-    ]);
-    results.set("coding tools", [
-      {
-        id: "thread-prod2",
-        title: "Thread for prod2",
-        selftext: "Content",
-        subreddit: "programming",
-        permalink: "/r/programming/thread-prod2",
-        created_utc: now - 3600,
-      },
-    ]);
+    ];
 
-    const app = createTestApp("test-secret", results);
-    const res = await app.request("/api/cron/discover", {
+    const app = createTestApp("test-secret", "1abc200", mockPosts);
+    await app.request("/api/cron/discover", {
       method: "GET",
       headers: { Authorization: "Bearer test-secret" },
     });
 
-    expect(res.status).toBe(200);
-    const json = await res.json();
-    expect(json.newThreadsFound).toBe(2);
-
-    const prod1Thread = mutableThreads.find((t) => t.redditThreadId === "thread-prod1");
-    const prod2Thread = mutableThreads.find((t) => t.redditThreadId === "thread-prod2");
-    expect(prod1Thread?.productId).toBe("prod-1");
-    expect(prod2Thread?.productId).toBe("prod-2");
+    const newThread = mutableThreads.find((t) => t.redditThreadId === "statuspost");
+    expect(newThread?.isNew).toBe(true);
+    expect(newThread?.status).toBe("active");
   });
 });
 

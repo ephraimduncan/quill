@@ -32,10 +32,10 @@ Remove Reddit OAuth, switch to email/password auth, use sequential ID-based Redd
 - [ ] `/api/threads/search` using `reddit.com/search.json`
 
 **Add:**
-- [ ] New fetching system based on base-36 ID polling
-- [ ] Track `lastProcessedId` globally (shared fetch)
-- [ ] Batch fetch via `api.reddit.com/api/info.json?id=t3_id1,t3_id2,...`
-- [ ] Keyword matching using Aho-Corasick (for performance)
+- [x] New fetching system based on base-36 ID polling
+- [x] Track `lastProcessedId` globally (shared fetch)
+- [x] Batch fetch via `api.reddit.com/api/info.json?id=t3_id1,t3_id2,...`
+- [x] Keyword matching using Aho-Corasick (for performance)
 
 **New Schema:**
 ```sql
@@ -57,10 +57,10 @@ redditSyncState: { id, lastPostId, updatedAt }
 ```
 
 **Files:**
-- [ ] `lib/db/schema.ts` - Add sync state table
-- [ ] `app/api/[[...route]]/route.ts` - Replace search with ID polling
-- [ ] New: `lib/reddit/id-fetcher.ts` - Base-36 ID logic, batch fetching
-- [ ] New: `lib/reddit/keyword-matcher.ts` - Aho-Corasick implementation
+- [x] `lib/db/schema.ts` - Add sync state table
+- [x] `app/api/[[...route]]/route.ts` - Replace search with ID polling
+- [x] New: `lib/reddit/id-fetcher.ts` - Base-36 ID logic, batch fetching
+- [x] New: `lib/reddit/keyword-matcher.ts` - Aho-Corasick implementation
 
 ---
 
@@ -116,8 +116,8 @@ const openai = createOpenAI({
 ## Migration Steps
 
 - [x] 1. Add email/password auth alongside Reddit (keep both temporarily)
-- [ ] 2. Implement ID-based Reddit fetching
-- [ ] 3. Test keyword matching with new fetch system
+- [x] 2. Implement ID-based Reddit fetching
+- [x] 3. Test keyword matching with new fetch system
 - [ ] 4. Remove post functionality from UI
 - [ ] 5. Switch to Vercel AI Gateway
 - [ ] 6. Remove Reddit OAuth completely
