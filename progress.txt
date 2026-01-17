@@ -602,3 +602,25 @@
   - Database can store users, sessions, accounts, and products
   - Landing page navigation links work correctly
 - Total: 308 tests passing across 26 files
+
+### Completed: Reddit Fetching Verification (Verification Step 2)
+
+- Created `__tests__/reddit-fetching-verification.test.ts` with 36 tests:
+  - Cron endpoint triggers poll correctly (7 tests)
+  - Keyword matching with Aho-Corasick (5 tests)
+  - Threads stored with matchedKeyword (5 tests)
+  - ID-based fetching system (7 tests)
+  - API returns threads for monitoring (3 tests)
+  - Monitor page displays threads (4 tests)
+  - Cron response includes discovery stats (5 tests)
+- Tests verify:
+  - GET /api/cron/discover endpoint validates CRON_SECRET
+  - Cron fetches latest post ID and reads/updates sync state
+  - ID range generation and batch fetching via api.reddit.com/api/info.json
+  - Keywords loaded from all products and matched via Aho-Corasick
+  - Threads inserted with matchedKeyword field populated
+  - Deduplication by productId + redditThreadId combination
+  - Posts older than 7 days filtered out
+  - API /api/products/:id returns threads array
+  - Monitor page fetches and displays threads with selection
+- Total: 344 tests passing across 27 files
