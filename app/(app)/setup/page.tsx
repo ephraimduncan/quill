@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useEffect, useCallback } from "react"
-import { useRouter } from "next/navigation"
+import { useRouter, useSearchParams } from "next/navigation"
 import { ArrowLeft, ArrowRight, ExternalLink, Globe, Plus, X } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -56,20 +56,60 @@ function StepIndicator({ currentStep, totalSteps }: { currentStep: number; total
 
 export default function SetupPage() {
   const router = useRouter()
+  const searchParams = useSearchParams()
+  const editProductId = searchParams.get("edit")
+  const isEditMode = !!editProductId
+
   const [state, setState] = useState<WizardState>({
-    step: 1,
+    step: isEditMode ? 2 : 1,
     url: "",
     productInfo: null,
     keywords: [],
     threads: [],
   })
-  const [isLoading, setIsLoading] = useState(false)
+  const [isLoading, setIsLoading] = useState(isEditMode)
   const [error, setError] = useState<string | null>(null)
   const [isGeneratingKeywords, setIsGeneratingKeywords] = useState(false)
   const [isSearchingThreads, setIsSearchingThreads] = useState(false)
   const [isSaving, setIsSaving] = useState(false)
   const [newKeyword, setNewKeyword] = useState("")
   const [selectedThreadId, setSelectedThreadId] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (!editProductId) return
+
+    async function loadProduct() {
+      try {
+        const res = await fetch(`/api/products/${editProductId}`)
+        const data = await res.json()
+
+        if (!res.ok) {
+          setError(data.error || "Failed to load product")
+          setIsLoading(false)
+          return
+        }
+
+        setState({
+          step: 2,
+          url: data.url,
+          productInfo: {
+            name: data.name,
+            description: data.description || "",
+            targetAudience: data.targetAudience || "",
+            url: data.url,
+          },
+          keywords: data.keywords || [],
+          threads: data.threads || [],
+        })
+      } catch {
+        setError("Failed to connect to server")
+      } finally {
+        setIsLoading(false)
+      }
+    }
+
+    loadProduct()
+  }, [editProductId])
 
   const handleUrlSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -105,6 +145,8 @@ export default function SetupPage() {
   const handleBack = () => {
     if (state.step === 1) {
       router.push("/dashboard")
+    } else if (state.step === 2 && isEditMode) {
+      router.push(`/monitor/${editProductId}`)
     } else {
       setState((prev) => ({ ...prev, step: prev.step - 1 }))
     }
@@ -203,6 +245,10 @@ export default function SetupPage() {
   }
 
   const handleKeywordsSubmit = () => {
+    if (isEditMode) {
+      setState((prev) => ({ ...prev, step: 5 }))
+      return
+    }
     if (state.threads.length === 0) {
       setError("No threads found. Add or modify keywords to find relevant discussions.")
       return
@@ -222,17 +268,30 @@ export default function SetupPage() {
     setError(null)
 
     try {
-      const response = await fetch("/api/products", {
-        method: "POST",
+      const url = isEditMode ? `/api/products/${editProductId}` : "/api/products"
+      const method = isEditMode ? "PUT" : "POST"
+
+      const payload = isEditMode
+        ? {
+            url: state.productInfo.url,
+            name: state.productInfo.name,
+            description: state.productInfo.description,
+            targetAudience: state.productInfo.targetAudience,
+            keywords: state.keywords,
+          }
+        : {
+            url: state.productInfo.url,
+            name: state.productInfo.name,
+            description: state.productInfo.description,
+            targetAudience: state.productInfo.targetAudience,
+            keywords: state.keywords,
+            threads: state.threads,
+          }
+
+      const response = await fetch(url, {
+        method,
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          url: state.productInfo.url,
-          name: state.productInfo.name,
-          description: state.productInfo.description,
-          targetAudience: state.productInfo.targetAudience,
-          keywords: state.keywords,
-          threads: state.threads,
-        }),
+        body: JSON.stringify(payload),
       })
 
       const data = await response.json()
@@ -263,13 +322,45 @@ export default function SetupPage() {
     return `${days}d ago`
   }
 
+  if (isLoading && isEditMode) {
+    return (
+      <div className="mx-auto py-8 px-4 max-w-2xl">
+        <Card>
+          <CardContent className="py-16">
+            <div className="flex flex-col items-center gap-4">
+              <Spinner size="md" />
+              <p className="text-muted-foreground">Loading product...</p>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+    )
+  }
+
+  if (error && isEditMode && !state.productInfo) {
+    return (
+      <div className="mx-auto py-8 px-4 max-w-2xl">
+        <Card>
+          <CardContent className="py-16">
+            <div className="flex flex-col items-center gap-4">
+              <p className="text-destructive">{error}</p>
+              <Button variant="outline" onClick={() => router.push("/dashboard")}>
+                Back to Dashboard
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+    )
+  }
+
   return (
     <div className={`mx-auto py-8 px-4 ${state.step === 4 ? "max-w-4xl" : "max-w-2xl"}`}>
       <div className="mb-8">
         <StepIndicator currentStep={state.step} totalSteps={TOTAL_STEPS} />
       </div>
 
-      {state.step === 1 && (
+      {state.step === 1 && !isEditMode && (
         <Card>
           <CardHeader>
             <CardTitle>Add your product</CardTitle>
@@ -323,9 +414,11 @@ export default function SetupPage() {
       {state.step === 2 && (
         <Card>
           <CardHeader>
-            <CardTitle>Review product information</CardTitle>
+            <CardTitle>{isEditMode ? "Edit product" : "Review product information"}</CardTitle>
             <CardDescription>
-              Verify and edit the extracted information about your product.
+              {isEditMode
+                ? "Update your product information and keywords."
+                : "Verify and edit the extracted information about your product."}
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -592,9 +685,11 @@ export default function SetupPage() {
       {state.step === 5 && (
         <Card>
           <CardHeader>
-            <CardTitle>Ready to start monitoring</CardTitle>
+            <CardTitle>{isEditMode ? "Save changes" : "Ready to start monitoring"}</CardTitle>
             <CardDescription>
-              Review your setup and save to start discovering engagement opportunities.
+              {isEditMode
+                ? "Review your changes before saving."
+                : "Review your setup and save to start discovering engagement opportunities."}
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-6">
@@ -608,7 +703,7 @@ export default function SetupPage() {
 
               <div className="flex items-center gap-4 text-sm text-muted-foreground">
                 <span>{state.keywords.length} keywords</span>
-                <span>{state.threads.length} threads found</span>
+                {!isEditMode && <span>{state.threads.length} threads found</span>}
               </div>
             </div>
 
@@ -623,10 +718,10 @@ export default function SetupPage() {
                 {isSaving ? (
                   <>
                     <Spinner size="sm" className="mr-2" />
-                    Saving...
+                    {isEditMode ? "Updating..." : "Saving..."}
                   </>
                 ) : (
-                  "Save & Start Monitoring"
+                  isEditMode ? "Save Changes" : "Save & Start Monitoring"
                 )}
               </Button>
             </div>

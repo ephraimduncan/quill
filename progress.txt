@@ -417,3 +417,34 @@
   - ResponseEditorPanel re-auth behavior
   - Monitor page token status integration
 - Total: 253 tests passing across 20 files
+
+### Completed: Product editing via wizard re-run (US-8)
+
+- Created PUT `/api/products/:id` endpoint in `app/api/[[...route]]/route.ts`:
+  - Validates authentication and product ownership
+  - Validates request with Zod schema (url, name, description, targetAudience, keywords)
+  - Updates product info in database
+  - Replaces keywords (deletes old, inserts new)
+  - Does not modify threads (they're discovered separately)
+  - Returns 404 for non-existent or unauthorized products
+- Updated `app/(app)/setup/page.tsx` with edit mode support:
+  - Accepts `?edit=productId` query parameter
+  - Loads existing product data on mount when editing
+  - Starts at Step 2 (product info) instead of Step 1 (URL input)
+  - Skips Step 4 (thread review) in edit mode
+  - Uses PUT instead of POST when saving
+  - Updated card titles/descriptions for edit mode context
+  - Added loading state while fetching product data
+  - Added error state if product fails to load
+- Updated `app/(app)/monitor/[productId]/page.tsx`:
+  - Added Edit button next to product name in header
+  - Edit button links to `/setup?edit=${productId}`
+- Added test suite in `__tests__/product-edit.test.ts` (17 tests):
+  - PUT auth validation (401 for unauthenticated)
+  - 404 for non-existent product
+  - 404 for product owned by another user
+  - 400 for invalid request data
+  - Product info update verification
+  - Keyword replacement verification
+  - Schema validation tests
+- Total: 270 tests passing across 21 files

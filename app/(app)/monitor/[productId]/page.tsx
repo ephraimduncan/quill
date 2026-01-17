@@ -2,7 +2,8 @@
 
 import { useState, useEffect, useCallback } from "react"
 import { useParams } from "next/navigation"
-import { ExternalLink, X, RotateCcw, RefreshCw, AlertCircle } from "lucide-react"
+import Link from "next/link"
+import { ExternalLink, X, RotateCcw, RefreshCw, AlertCircle, Pencil } from "lucide-react"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Badge } from "@/components/ui/badge"
@@ -246,7 +247,15 @@ export default function MonitorPage() {
   return (
     <div className="max-w-5xl mx-auto py-8 px-4">
       <div className="mb-6">
-        <h1 className="text-2xl font-bold">{product.name}</h1>
+        <div className="flex items-center gap-3">
+          <h1 className="text-2xl font-bold">{product.name}</h1>
+          <Link href={`/setup?edit=${productId}`}>
+            <Button variant="ghost" size="sm">
+              <Pencil className="size-4 mr-1" />
+              Edit
+            </Button>
+          </Link>
+        </div>
         <p className="text-muted-foreground">{product.description}</p>
       </div>
 

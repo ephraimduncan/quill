@@ -132,7 +132,7 @@ Product makers need to discover Reddit threads where users discuss problems thei
 - [ ] Dashboard shows product cards grid
 - [ ] Card shows: product name, new thread count badge
 - [ ] "Add Product" button → wizard
-- [ ] Re-run wizard to edit (no inline edit)
+- [x] Re-run wizard to edit (no inline edit)
 - [ ] Unlimited products per user
 
 ### US-9: Post History

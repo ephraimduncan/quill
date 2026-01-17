@@ -208,6 +208,65 @@ app.post("/products", async (c) => {
   return c.json({ id: productId }, 201);
 });
 
+const updateProductSchema = z.object({
+  url: z.string().url(),
+  name: z.string().min(1),
+  description: z.string(),
+  targetAudience: z.string(),
+  keywords: z.array(z.string().min(1)),
+});
+
+app.put("/products/:id", async (c) => {
+  const user = c.get("user");
+  if (!user) {
+    return c.json({ error: "Unauthorized" }, 401);
+  }
+
+  const productId = c.req.param("id");
+
+  const [existing] = await db
+    .select()
+    .from(products)
+    .where(and(eq(products.id, productId), eq(products.userId, user.id)));
+
+  if (!existing) {
+    return c.json({ error: "Product not found" }, 404);
+  }
+
+  const body = await c.req.json();
+  const parsed = updateProductSchema.safeParse(body);
+
+  if (!parsed.success) {
+    return c.json({ error: "Invalid request data" }, 400);
+  }
+
+  const data = parsed.data;
+
+  await db
+    .update(products)
+    .set({
+      url: data.url,
+      name: data.name,
+      description: data.description,
+      targetAudience: data.targetAudience,
+    })
+    .where(eq(products.id, productId));
+
+  await db.delete(keywords).where(eq(keywords.productId, productId));
+
+  if (data.keywords.length > 0) {
+    await db.insert(keywords).values(
+      data.keywords.map((keyword) => ({
+        id: randomUUID(),
+        productId,
+        keyword,
+      }))
+    );
+  }
+
+  return c.json({ id: productId });
+});
+
 const productInfoSchema = z.object({
   name: z.string().describe("The product or service name"),
   description: z
