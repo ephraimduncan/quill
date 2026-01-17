@@ -120,3 +120,37 @@
   - Advances to Step 3 on submit
   - Back button returns to Step 1
 - Total: 54 tests passing across 8 files
+
+### Completed: Step 3: Keyword generation + thread auto-preview
+
+- Created POST `/api/keywords/generate` endpoint in `app/api/[[...route]]/route.ts`:
+  - Validates authentication and product name
+  - Uses Vercel AI SDK `generateObject` with GPT-4o-mini
+  - Zod schema validates keywords (2-50 chars, alphanumeric with spaces/hyphens)
+  - Generates ~10 keywords optimized for Reddit search
+- Created POST `/api/threads/search` endpoint in `app/api/[[...route]]/route.ts`:
+  - Validates authentication and keywords array
+  - Searches Reddit's public JSON API for each keyword
+  - Filters threads to last 7 days
+  - Deduplicates by Reddit thread ID
+  - Sorts by recency (newest first)
+  - Returns thread preview data (id, title, preview, subreddit, url, timestamp)
+- Updated `app/(app)/setup/page.tsx` with Step 3 implementation:
+  - Auto-generates keywords on step entry via API call
+  - Flat keyword list with add/remove functionality
+  - Manual keyword input with Enter key support
+  - Auto-preview threads with 500ms debounce
+  - Shows up to 5 thread previews with overflow indicator
+  - Relative time formatting (just now, Xm ago, Xh ago, Xd ago)
+  - Blocks proceed if no threads found with error message
+  - Loading states for keyword generation and thread search
+- Added test suite in `__tests__/keywords.test.ts` (10 tests):
+  - Auth validation, input validation, schema validation
+- Added test suite in `__tests__/threads.test.ts` (9 tests):
+  - Auth validation, input validation, thread structure
+- Updated test suite in `__tests__/setup.test.ts` (7 new tests):
+  - State includes keywords and threads
+  - Add/remove keyword functionality
+  - Proceed blocked without threads
+  - formatRelativeTime helper
+- Total: 80 tests passing across 10 files

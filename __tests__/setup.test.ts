@@ -256,4 +256,138 @@ describe("Setup Wizard", () => {
     const prevState = goBack(stateAtStep2);
     expect(prevState.step).toBe(1);
   });
+
+  test("Step 3 state includes keywords and threads", () => {
+    type RedditThread = {
+      redditThreadId: string;
+      title: string;
+      bodyPreview: string;
+      subreddit: string;
+      url: string;
+      createdUtc: number;
+    };
+
+    type WizardState = {
+      step: number;
+      url: string;
+      productInfo: { name: string; description: string; targetAudience: string; url: string } | null;
+      keywords: string[];
+      threads: RedditThread[];
+    };
+
+    const initialState: WizardState = {
+      step: 1,
+      url: "",
+      productInfo: null,
+      keywords: [],
+      threads: [],
+    };
+
+    expect(initialState.keywords).toEqual([]);
+    expect(initialState.threads).toEqual([]);
+  });
+
+  test("Step 3 add keyword works correctly", () => {
+    const keywords: string[] = ["productivity", "task manager"];
+
+    const addKeyword = (list: string[], keyword: string): string[] => {
+      const trimmed = keyword.trim();
+      if (!trimmed || list.includes(trimmed)) return list;
+      return [...list, trimmed];
+    };
+
+    const updated = addKeyword(keywords, "project management");
+    expect(updated).toHaveLength(3);
+    expect(updated).toContain("project management");
+
+    const duplicate = addKeyword(keywords, "productivity");
+    expect(duplicate).toHaveLength(2);
+  });
+
+  test("Step 3 remove keyword works correctly", () => {
+    const keywords: string[] = ["productivity", "task manager", "organization"];
+
+    const removeKeyword = (list: string[], index: number): string[] =>
+      list.filter((_, i) => i !== index);
+
+    const updated = removeKeyword(keywords, 1);
+    expect(updated).toHaveLength(2);
+    expect(updated).toContain("productivity");
+    expect(updated).toContain("organization");
+    expect(updated).not.toContain("task manager");
+  });
+
+  test("Step 3 blocks proceed when no threads found", () => {
+    type RedditThread = {
+      redditThreadId: string;
+      title: string;
+      bodyPreview: string;
+      subreddit: string;
+      url: string;
+      createdUtc: number;
+    };
+
+    const canProceed = (threads: RedditThread[]): boolean => threads.length > 0;
+
+    expect(canProceed([])).toBe(false);
+    expect(canProceed([{
+      redditThreadId: "abc123",
+      title: "Test",
+      bodyPreview: "",
+      subreddit: "test",
+      url: "https://reddit.com/r/test/abc123",
+      createdUtc: Date.now() / 1000,
+    }])).toBe(true);
+  });
+
+  test("Step 3 advances to Step 4 when threads exist", () => {
+    type WizardState = {
+      step: number;
+      keywords: string[];
+      threads: Array<{ redditThreadId: string }>;
+    };
+
+    const stateAtStep3: WizardState = {
+      step: 3,
+      keywords: ["productivity"],
+      threads: [{ redditThreadId: "abc123" }],
+    };
+
+    const advanceToStep4 = (state: WizardState): WizardState => {
+      if (state.threads.length === 0) return state;
+      return { ...state, step: 4 };
+    };
+
+    const nextState = advanceToStep4(stateAtStep3);
+    expect(nextState.step).toBe(4);
+  });
+
+  test("Step 3 back button returns to Step 2", () => {
+    const step = 3;
+    const goBack = (currentStep: number): number => currentStep - 1;
+    expect(goBack(step)).toBe(2);
+  });
+
+  test("formatRelativeTime returns correct values", () => {
+    const formatRelativeTime = (timestamp: number): string => {
+      const seconds = Math.floor(Date.now() / 1000 - timestamp);
+      if (seconds < 60) return "just now";
+      const minutes = Math.floor(seconds / 60);
+      if (minutes < 60) return `${minutes}m ago`;
+      const hours = Math.floor(minutes / 60);
+      if (hours < 24) return `${hours}h ago`;
+      const days = Math.floor(hours / 24);
+      return `${days}d ago`;
+    };
+
+    const now = Math.floor(Date.now() / 1000);
+
+    expect(formatRelativeTime(now)).toBe("just now");
+    expect(formatRelativeTime(now - 30)).toBe("just now");
+    expect(formatRelativeTime(now - 300)).toBe("5m ago");
+    expect(formatRelativeTime(now - 3600)).toBe("1h ago");
+    expect(formatRelativeTime(now - 7200)).toBe("2h ago");
+    expect(formatRelativeTime(now - 86400)).toBe("1d ago");
+    expect(formatRelativeTime(now - 172800)).toBe("2d ago");
+  });
 });

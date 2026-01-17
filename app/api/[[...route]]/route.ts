@@ -71,6 +71,20 @@ const productInfoSchema = z.object({
     .describe("Who the product is for and what problems it solves"),
 });
 
+const keywordsSchema = z.object({
+  keywords: z
+    .array(
+      z
+        .string()
+        .min(2)
+        .max(50)
+        .regex(/^[a-zA-Z0-9\s-]+$/)
+    )
+    .min(1)
+    .max(15)
+    .describe("Search keywords optimized for Reddit search"),
+});
+
 app.post("/extract", async (c) => {
   const user = c.get("user");
   if (!user) {
@@ -146,6 +160,131 @@ ${contentForLLM}`,
       500
     );
   }
+});
+
+app.post("/keywords/generate", async (c) => {
+  const user = c.get("user");
+  if (!user) {
+    return c.json({ error: "Unauthorized" }, 401);
+  }
+
+  const body = await c.req.json();
+  const { name, description, targetAudience } = body;
+
+  if (!name || typeof name !== "string") {
+    return c.json({ error: "Product name is required" }, 400);
+  }
+
+  const productContext = `
+Product: ${name}
+${description ? `Description: ${description}` : ""}
+${targetAudience ? `Target Audience: ${targetAudience}` : ""}
+`.trim();
+
+  try {
+    const { object } = await generateObject({
+      model: openai("gpt-4o-mini"),
+      schema: keywordsSchema,
+      prompt: `Generate 10 search keywords to find Reddit discussions where users are looking for solutions that this product could help with.
+
+${productContext}
+
+Requirements:
+- Keywords should match how people naturally describe their problems on Reddit
+- Include problem-focused phrases (e.g., "how to fix", "best way to", "help with")
+- Include product category terms and alternatives people might search for
+- Avoid brand names or overly specific product features
+- Each keyword should be 2-5 words for optimal Reddit search results
+- Focus on pain points and use cases rather than solutions`,
+    });
+
+    return c.json({ keywords: object.keywords });
+  } catch (err) {
+    return c.json(
+      { error: `Failed to generate keywords: ${err instanceof Error ? err.message : "Unknown error"}` },
+      500
+    );
+  }
+});
+
+type RedditThread = {
+  id: string;
+  title: string;
+  selftext: string;
+  subreddit: string;
+  permalink: string;
+  created_utc: number;
+};
+
+app.post("/threads/search", async (c) => {
+  const user = c.get("user");
+  if (!user) {
+    return c.json({ error: "Unauthorized" }, 401);
+  }
+
+  const body = await c.req.json();
+  const { keywords } = body;
+
+  if (!keywords || !Array.isArray(keywords) || keywords.length === 0) {
+    return c.json({ error: "Keywords array is required" }, 400);
+  }
+
+  const sevenDaysAgo = Math.floor(Date.now() / 1000) - 7 * 24 * 60 * 60;
+  const seenIds = new Set<string>();
+  const allThreads: Array<{
+    redditThreadId: string;
+    title: string;
+    bodyPreview: string;
+    subreddit: string;
+    url: string;
+    createdUtc: number;
+  }> = [];
+
+  for (const keyword of keywords) {
+    if (typeof keyword !== "string" || !keyword.trim()) continue;
+
+    try {
+      const searchUrl = new URL("https://www.reddit.com/search.json");
+      searchUrl.searchParams.set("q", keyword);
+      searchUrl.searchParams.set("sort", "new");
+      searchUrl.searchParams.set("limit", "10");
+      searchUrl.searchParams.set("t", "week");
+      searchUrl.searchParams.set("type", "link");
+
+      const response = await fetch(searchUrl.toString(), {
+        headers: {
+          "User-Agent": "RedditAgent/1.0",
+        },
+      });
+
+      if (!response.ok) continue;
+
+      const data = await response.json();
+      const posts = data?.data?.children || [];
+
+      for (const post of posts) {
+        const thread = post.data as RedditThread;
+        if (seenIds.has(thread.id)) continue;
+        if (thread.created_utc < sevenDaysAgo) continue;
+
+        seenIds.add(thread.id);
+        allThreads.push({
+          redditThreadId: thread.id,
+          title: thread.title,
+          bodyPreview: (thread.selftext || "").slice(0, 200),
+          subreddit: thread.subreddit,
+          url: `https://reddit.com${thread.permalink}`,
+          createdUtc: thread.created_utc,
+        });
+      }
+    } catch {
+      continue;
+    }
+  }
+
+  allThreads.sort((a, b) => b.createdUtc - a.createdUtc);
+
+  return c.json({ threads: allThreads });
 });
 
 export const GET = handle(app);

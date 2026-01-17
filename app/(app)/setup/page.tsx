@@ -1,8 +1,8 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect, useCallback } from "react"
 import { useRouter } from "next/navigation"
-import { ArrowLeft, ArrowRight, Globe } from "lucide-react"
+import { ArrowLeft, ArrowRight, Globe, Plus, X } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
@@ -16,10 +16,21 @@ type ProductInfo = {
   url: string
 }
 
+type RedditThread = {
+  redditThreadId: string
+  title: string
+  bodyPreview: string
+  subreddit: string
+  url: string
+  createdUtc: number
+}
+
 type WizardState = {
   step: number
   url: string
   productInfo: ProductInfo | null
+  keywords: string[]
+  threads: RedditThread[]
 }
 
 const TOTAL_STEPS = 5
@@ -49,9 +60,14 @@ export default function SetupPage() {
     step: 1,
     url: "",
     productInfo: null,
+    keywords: [],
+    threads: [],
   })
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [isGeneratingKeywords, setIsGeneratingKeywords] = useState(false)
+  const [isSearchingThreads, setIsSearchingThreads] = useState(false)
+  const [newKeyword, setNewKeyword] = useState("")
 
   const handleUrlSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -96,6 +112,112 @@ export default function SetupPage() {
     e.preventDefault()
     if (!state.productInfo?.name?.trim()) return
     setState((prev) => ({ ...prev, step: 3 }))
+  }
+
+  const generateKeywords = useCallback(async () => {
+    if (!state.productInfo) return
+    setIsGeneratingKeywords(true)
+    setError(null)
+
+    try {
+      const response = await fetch("/api/keywords/generate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: state.productInfo.name,
+          description: state.productInfo.description,
+          targetAudience: state.productInfo.targetAudience,
+        }),
+      })
+
+      const data = await response.json()
+
+      if (!response.ok) {
+        setError(data.error || "Failed to generate keywords")
+        return
+      }
+
+      setState((prev) => ({ ...prev, keywords: data.keywords }))
+    } catch {
+      setError("Failed to connect to server")
+    } finally {
+      setIsGeneratingKeywords(false)
+    }
+  }, [state.productInfo])
+
+  const searchThreads = useCallback(async (keywords: string[]) => {
+    if (keywords.length === 0) {
+      setState((prev) => ({ ...prev, threads: [] }))
+      return
+    }
+
+    setIsSearchingThreads(true)
+
+    try {
+      const response = await fetch("/api/threads/search", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ keywords }),
+      })
+
+      const data = await response.json()
+
+      if (response.ok) {
+        setState((prev) => ({ ...prev, threads: data.threads }))
+      }
+    } catch {
+      // Silently fail thread preview
+    } finally {
+      setIsSearchingThreads(false)
+    }
+  }, [])
+
+  useEffect(() => {
+    if (state.step === 3 && state.keywords.length === 0) {
+      generateKeywords()
+    }
+  }, [state.step, state.keywords.length, generateKeywords])
+
+  useEffect(() => {
+    if (state.step !== 3) return
+    const timeoutId = setTimeout(() => {
+      searchThreads(state.keywords)
+    }, 500)
+    return () => clearTimeout(timeoutId)
+  }, [state.step, state.keywords, searchThreads])
+
+  const addKeyword = () => {
+    const keyword = newKeyword.trim()
+    if (!keyword || state.keywords.includes(keyword)) return
+    setState((prev) => ({ ...prev, keywords: [...prev.keywords, keyword] }))
+    setNewKeyword("")
+  }
+
+  const removeKeyword = (index: number) => {
+    setState((prev) => ({
+      ...prev,
+      keywords: prev.keywords.filter((_, i) => i !== index),
+    }))
+  }
+
+  const handleKeywordsSubmit = () => {
+    if (state.threads.length === 0) {
+      setError("No threads found. Add or modify keywords to find relevant discussions.")
+      return
+    }
+    setError(null)
+    setState((prev) => ({ ...prev, step: 4 }))
+  }
+
+  const formatRelativeTime = (timestamp: number) => {
+    const seconds = Math.floor(Date.now() / 1000 - timestamp)
+    if (seconds < 60) return "just now"
+    const minutes = Math.floor(seconds / 60)
+    if (minutes < 60) return `${minutes}m ago`
+    const hours = Math.floor(minutes / 60)
+    if (hours < 24) return `${hours}h ago`
+    const days = Math.floor(hours / 24)
+    return `${days}d ago`
   }
 
   return (
@@ -236,6 +358,115 @@ export default function SetupPage() {
                 </Button>
               </div>
             </form>
+          </CardContent>
+        </Card>
+      )}
+
+      {state.step === 3 && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Search keywords</CardTitle>
+            <CardDescription>
+              Add keywords to find relevant Reddit discussions. Keywords are auto-generated based on your product.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-6">
+            {isGeneratingKeywords ? (
+              <div className="flex items-center justify-center py-8">
+                <Spinner size="md" className="mr-2" />
+                <span className="text-muted-foreground">Generating keywords...</span>
+              </div>
+            ) : (
+              <>
+                <div className="space-y-3">
+                  <div className="flex gap-2">
+                    <Input
+                      placeholder="Add a keyword..."
+                      value={newKeyword}
+                      onChange={(e) => setNewKeyword(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") {
+                          e.preventDefault()
+                          addKeyword()
+                        }
+                      }}
+                    />
+                    <Button type="button" variant="outline" size="icon" onClick={addKeyword}>
+                      <Plus className="size-4" />
+                    </Button>
+                  </div>
+
+                  <div className="flex flex-wrap gap-2">
+                    {state.keywords.map((keyword, index) => (
+                      <div
+                        key={index}
+                        className="flex items-center gap-1 rounded-md bg-secondary px-2 py-1 text-sm"
+                      >
+                        {keyword}
+                        <button
+                          type="button"
+                          onClick={() => removeKeyword(index)}
+                          className="text-muted-foreground hover:text-foreground"
+                        >
+                          <X className="size-3" />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm font-medium">Thread preview</span>
+                    {isSearchingThreads && <Spinner size="sm" />}
+                  </div>
+
+                  {state.threads.length > 0 ? (
+                    <div className="max-h-64 overflow-y-auto rounded-md border">
+                      {state.threads.slice(0, 5).map((thread) => (
+                        <div
+                          key={thread.redditThreadId}
+                          className="border-b p-3 last:border-b-0"
+                        >
+                          <div className="font-medium text-sm line-clamp-1">{thread.title}</div>
+                          <div className="text-xs text-muted-foreground">
+                            r/{thread.subreddit} · {formatRelativeTime(thread.createdUtc)}
+                          </div>
+                        </div>
+                      ))}
+                      {state.threads.length > 5 && (
+                        <div className="p-3 text-center text-sm text-muted-foreground">
+                          +{state.threads.length - 5} more threads
+                        </div>
+                      )}
+                    </div>
+                  ) : (
+                    !isSearchingThreads && state.keywords.length > 0 && (
+                      <div className="rounded-md border p-4 text-center text-sm text-muted-foreground">
+                        No threads found for these keywords
+                      </div>
+                    )
+                  )}
+                </div>
+
+                {error && <p className="text-sm text-destructive">{error}</p>}
+
+                <div className="flex justify-between pt-2">
+                  <Button type="button" variant="outline" onClick={handleBack}>
+                    <ArrowLeft data-icon="inline-start" />
+                    Back
+                  </Button>
+                  <Button
+                    type="button"
+                    onClick={handleKeywordsSubmit}
+                    disabled={isSearchingThreads || state.keywords.length === 0}
+                  >
+                    Continue
+                    <ArrowRight data-icon="inline-end" />
+                  </Button>
+                </div>
+              </>
+            )}
           </CardContent>
         </Card>
       )}
