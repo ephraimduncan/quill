@@ -114,6 +114,42 @@ app.get("/products/:id", async (c) => {
   });
 });
 
+app.get("/history/:productId", async (c) => {
+  const user = c.get("user");
+  if (!user) {
+    return c.json({ error: "Unauthorized" }, 401);
+  }
+
+  const productId = c.req.param("productId");
+
+  const [product] = await db
+    .select()
+    .from(products)
+    .where(and(eq(products.id, productId), eq(products.userId, user.id)));
+
+  if (!product) {
+    return c.json({ error: "Product not found" }, 404);
+  }
+
+  const history = await db
+    .select({
+      id: postHistory.id,
+      threadId: postHistory.threadId,
+      responseSnippet: postHistory.responseSnippet,
+      redditCommentUrl: postHistory.redditCommentUrl,
+      postedAt: postHistory.postedAt,
+      threadTitle: threads.title,
+      threadSubreddit: threads.subreddit,
+      threadUrl: threads.url,
+    })
+    .from(postHistory)
+    .innerJoin(threads, eq(postHistory.threadId, threads.id))
+    .where(eq(postHistory.productId, productId))
+    .orderBy(postHistory.postedAt);
+
+  return c.json(history);
+});
+
 app.post("/products", async (c) => {
   const user = c.get("user");
   if (!user) {
@@ -396,6 +432,32 @@ app.post("/threads/search", async (c) => {
   allThreads.sort((a, b) => b.createdUtc - a.createdUtc);
 
   return c.json({ threads: allThreads });
+});
+
+app.post("/threads/:id/mark-read", async (c) => {
+  const user = c.get("user");
+  if (!user) {
+    return c.json({ error: "Unauthorized" }, 401);
+  }
+
+  const threadId = c.req.param("id");
+
+  const [thread] = await db.select().from(threads).where(eq(threads.id, threadId));
+  if (!thread) {
+    return c.json({ error: "Thread not found" }, 404);
+  }
+
+  const [product] = await db
+    .select()
+    .from(products)
+    .where(and(eq(products.id, thread.productId), eq(products.userId, user.id)));
+  if (!product) {
+    return c.json({ error: "Thread not found" }, 404);
+  }
+
+  await db.update(threads).set({ isNew: false }).where(eq(threads.id, threadId));
+
+  return c.json({ success: true });
 });
 
 const generateResponseSchema = z.object({

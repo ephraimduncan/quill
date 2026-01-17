@@ -289,3 +289,28 @@
   - Toast import and usage in response editor panel
   - sonner package dependency verification
 - Total: 162 tests passing across 15 files
+
+### Completed: Monitoring view with tabs
+
+- Added shadcn tabs component (`components/ui/tabs.tsx`)
+- Created GET `/api/history/:productId` endpoint in `app/api/[[...route]]/route.ts`:
+  - Validates authentication and product ownership
+  - Returns post history with joined thread details (title, subreddit, url)
+  - Orders by postedAt timestamp
+- Created POST `/api/threads/:id/mark-read` endpoint:
+  - Validates authentication and thread ownership
+  - Sets thread isNew flag to false
+- Updated `app/(app)/monitor/[productId]/page.tsx` with:
+  - Three tabs: Threads, History, Dismissed
+  - New thread badge on Threads tab showing count of unread threads
+  - Individual "New" badges on thread list items
+  - Thread selection clears isNew flag via API call
+  - History tab displays post history with response snippets
+  - Dismissed tab shows dismissed threads list
+  - Parallel fetch for product and history data on load
+- Added test suite in `__tests__/monitoring-tabs.test.ts` (21 tests):
+  - History API auth, 404, ownership validation
+  - Mark-read API auth, 404, ownership, success
+  - Tab filtering and navigation tests
+  - History rendering and pluralization tests
+- Total: 183 tests passing across 16 files

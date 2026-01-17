@@ -322,14 +322,14 @@ Mounted at `/api/*` via Next.js catch-all route.
 - [x] Toast notifications
 
 ### Phase 5: Monitoring
-- [ ] Monitoring view with tabs
+- [x] Monitoring view with tabs
 - [ ] Thread dismiss/restore
-- [ ] Post history tab
+- [x] Post history tab
 - [ ] Manual refresh button
 
 ### Phase 6: Automation
 - [ ] Vercel Cron job for daily discovery
-- [ ] New thread badges
+- [x] New thread badges
 - [ ] Token refresh logic
 
 ---
