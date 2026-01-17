@@ -5,6 +5,8 @@ import Link from "next/link";
 import { Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ProductCard } from "@/components/product-card";
+import { ProductCardSkeleton } from "@/components/product-card-skeleton";
+import { Skeleton } from "@/components/ui/skeleton";
 
 interface Product {
   id: string;
@@ -46,13 +48,11 @@ export default function DashboardPage() {
       <div>
         <div className="flex items-center justify-between mb-6">
           <h1 className="text-2xl font-bold">Products</h1>
+          <Skeleton className="h-9 w-32" />
         </div>
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {[1, 2, 3].map((i) => (
-            <div
-              key={i}
-              className="h-20 bg-muted animate-pulse rounded-xl"
-            />
+            <ProductCardSkeleton key={i} />
           ))}
         </div>
       </div>

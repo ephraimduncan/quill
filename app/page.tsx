@@ -4,6 +4,7 @@ import { useEffect } from "react"
 import { useRouter } from "next/navigation"
 import { IconBrandReddit } from "@tabler/icons-react"
 import { Button } from "@/components/ui/button"
+import { Spinner } from "@/components/ui/spinner"
 import { useSession, signIn } from "@/lib/auth/client"
 
 export default function LandingPage() {
@@ -23,7 +24,7 @@ export default function LandingPage() {
   if (isPending) {
     return (
       <div className="min-h-screen flex items-center justify-center">
-        <div className="size-8 rounded-full border-2 border-primary border-t-transparent animate-spin" />
+        <Spinner />
       </div>
     )
   }
