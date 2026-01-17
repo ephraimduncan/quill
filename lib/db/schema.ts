@@ -1,20 +1,13 @@
 import { sqliteTable, text, integer } from "drizzle-orm/sqlite-core";
+import { user } from "@/lib/auth/schema";
 
-export const users = sqliteTable("users", {
-  id: text("id").primaryKey(),
-  redditId: text("reddit_id").notNull().unique(),
-  redditUsername: text("reddit_username").notNull(),
-  accessToken: text("access_token").notNull(),
-  refreshToken: text("refresh_token").notNull(),
-  tokenExpiresAt: integer("token_expires_at").notNull(),
-  createdAt: integer("created_at").notNull(),
-});
+export * from "@/lib/auth/schema";
 
 export const products = sqliteTable("products", {
   id: text("id").primaryKey(),
   userId: text("user_id")
     .notNull()
-    .references(() => users.id),
+    .references(() => user.id),
   url: text("url").notNull(),
   name: text("name").notNull(),
   description: text("description").notNull(),
@@ -52,7 +45,7 @@ export const postHistory = sqliteTable("post_history", {
   id: text("id").primaryKey(),
   userId: text("user_id")
     .notNull()
-    .references(() => users.id),
+    .references(() => user.id),
   productId: text("product_id")
     .notNull()
     .references(() => products.id, { onDelete: "cascade" }),
@@ -64,8 +57,8 @@ export const postHistory = sqliteTable("post_history", {
   postedAt: integer("posted_at").notNull(),
 });
 
-export type User = typeof users.$inferSelect;
-export type NewUser = typeof users.$inferInsert;
+export type User = typeof user.$inferSelect;
+export type NewUser = typeof user.$inferInsert;
 export type Product = typeof products.$inferSelect;
 export type NewProduct = typeof products.$inferInsert;
 export type Keyword = typeof keywords.$inferSelect;

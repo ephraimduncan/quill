@@ -20,3 +20,21 @@
 - Created `.env.example` with TURSO_DATABASE_URL and TURSO_AUTH_TOKEN
 - Added test suite in `__tests__/db.test.ts` (6 tests, all passing)
 - Total: 9 tests passing across 2 files
+
+### Completed: Setup better-auth with Reddit OAuth
+
+- Installed better-auth v1.4.14
+- Created auth server config at `lib/auth/index.ts` with:
+  - Drizzle adapter for SQLite/Turso
+  - Reddit OAuth provider with scopes: identity, read, submit
+  - Session config (7 day expiry, 1 day update age)
+- Created auth client at `lib/auth/client.ts` with signIn, signOut, useSession exports
+- Created auth schema at `lib/auth/schema.ts` with tables: user, session, account, verification
+- Updated `lib/db/schema.ts`:
+  - Replaced custom users table with better-auth user table
+  - Updated foreign keys in products and postHistory to reference user.id
+- Created auth API route at `app/api/auth/[...all]/route.ts`
+- Updated `.env.example` with REDDIT_CLIENT_ID, REDDIT_CLIENT_SECRET, BETTER_AUTH_SECRET, BETTER_AUTH_URL
+- Updated test suite in `__tests__/db.test.ts` for new auth schema (7 tests)
+- Added auth test suite in `__tests__/auth.test.ts` (6 tests)
+- Total: 16 tests passing across 3 files

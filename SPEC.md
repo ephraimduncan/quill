@@ -301,7 +301,7 @@ Mounted at `/api/*` via Next.js catch-all route.
 ### Phase 1: Foundation
 - [x] Setup Hono backend with catch-all route (`app/api/[[...route]]/route.ts`)
 - [x] Setup Drizzle + Turso schema
-- [ ] Setup better-auth with Reddit OAuth
+- [x] Setup better-auth with Reddit OAuth
 
 ### Phase 2: Core UI
 - [ ] Build app shell (header, sidebar, mobile hamburger)

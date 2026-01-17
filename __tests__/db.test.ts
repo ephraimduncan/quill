@@ -9,21 +9,63 @@ const db = drizzle(client, { schema });
 
 beforeAll(async () => {
   await client.execute(`
-    CREATE TABLE users (
+    CREATE TABLE user (
       id TEXT PRIMARY KEY,
-      reddit_id TEXT NOT NULL UNIQUE,
-      reddit_username TEXT NOT NULL,
-      access_token TEXT NOT NULL,
-      refresh_token TEXT NOT NULL,
-      token_expires_at INTEGER NOT NULL,
-      created_at INTEGER NOT NULL
+      name TEXT NOT NULL,
+      email TEXT NOT NULL UNIQUE,
+      email_verified INTEGER NOT NULL,
+      image TEXT,
+      created_at INTEGER NOT NULL,
+      updated_at INTEGER NOT NULL
+    )
+  `);
+
+  await client.execute(`
+    CREATE TABLE session (
+      id TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL REFERENCES user(id),
+      token TEXT NOT NULL UNIQUE,
+      expires_at INTEGER NOT NULL,
+      ip_address TEXT,
+      user_agent TEXT,
+      created_at INTEGER NOT NULL,
+      updated_at INTEGER NOT NULL
+    )
+  `);
+
+  await client.execute(`
+    CREATE TABLE account (
+      id TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL REFERENCES user(id),
+      account_id TEXT NOT NULL,
+      provider_id TEXT NOT NULL,
+      access_token TEXT,
+      refresh_token TEXT,
+      access_token_expires_at INTEGER,
+      refresh_token_expires_at INTEGER,
+      scope TEXT,
+      id_token TEXT,
+      password TEXT,
+      created_at INTEGER NOT NULL,
+      updated_at INTEGER NOT NULL
+    )
+  `);
+
+  await client.execute(`
+    CREATE TABLE verification (
+      id TEXT PRIMARY KEY,
+      identifier TEXT NOT NULL,
+      value TEXT NOT NULL,
+      expires_at INTEGER NOT NULL,
+      created_at INTEGER,
+      updated_at INTEGER
     )
   `);
 
   await client.execute(`
     CREATE TABLE products (
       id TEXT PRIMARY KEY,
-      user_id TEXT NOT NULL REFERENCES users(id),
+      user_id TEXT NOT NULL REFERENCES user(id),
       url TEXT NOT NULL,
       name TEXT NOT NULL,
       description TEXT NOT NULL,
@@ -59,7 +101,7 @@ beforeAll(async () => {
   await client.execute(`
     CREATE TABLE post_history (
       id TEXT PRIMARY KEY,
-      user_id TEXT NOT NULL REFERENCES users(id),
+      user_id TEXT NOT NULL REFERENCES user(id),
       product_id TEXT NOT NULL REFERENCES products(id) ON DELETE CASCADE,
       thread_id TEXT NOT NULL REFERENCES threads(id),
       response_snippet TEXT NOT NULL,
@@ -76,41 +118,77 @@ afterAll(() => {
 describe("Database Schema", () => {
   test("can insert and query users", async () => {
     const userId = crypto.randomUUID();
-    const now = Date.now();
+    const now = new Date();
 
-    await db.insert(schema.users).values({
+    await db.insert(schema.user).values({
       id: userId,
-      redditId: "reddit_123",
-      redditUsername: "testuser",
-      accessToken: "access_token",
-      refreshToken: "refresh_token",
-      tokenExpiresAt: now + 3600000,
+      name: "testuser",
+      email: "test@example.com",
+      emailVerified: false,
       createdAt: now,
+      updatedAt: now,
     });
 
     const users = await db
       .select()
-      .from(schema.users)
-      .where(eq(schema.users.id, userId));
+      .from(schema.user)
+      .where(eq(schema.user.id, userId));
 
     expect(users).toHaveLength(1);
-    expect(users[0].redditUsername).toBe("testuser");
-    expect(users[0].redditId).toBe("reddit_123");
+    expect(users[0].name).toBe("testuser");
+    expect(users[0].email).toBe("test@example.com");
+  });
+
+  test("can insert and query accounts for OAuth", async () => {
+    const userId = crypto.randomUUID();
+    const accountId = crypto.randomUUID();
+    const now = new Date();
+
+    await db.insert(schema.user).values({
+      id: userId,
+      name: "oauthuser",
+      email: "oauth@example.com",
+      emailVerified: false,
+      createdAt: now,
+      updatedAt: now,
+    });
+
+    await db.insert(schema.account).values({
+      id: accountId,
+      userId: userId,
+      accountId: "reddit_123",
+      providerId: "reddit",
+      accessToken: "access_token",
+      refreshToken: "refresh_token",
+      accessTokenExpiresAt: new Date(now.getTime() + 3600000),
+      scope: "identity read submit",
+      createdAt: now,
+      updatedAt: now,
+    });
+
+    const accounts = await db
+      .select()
+      .from(schema.account)
+      .where(eq(schema.account.userId, userId));
+
+    expect(accounts).toHaveLength(1);
+    expect(accounts[0].providerId).toBe("reddit");
+    expect(accounts[0].accountId).toBe("reddit_123");
+    expect(accounts[0].scope).toBe("identity read submit");
   });
 
   test("can insert and query products with foreign key to users", async () => {
     const userId = crypto.randomUUID();
     const productId = crypto.randomUUID();
-    const now = Date.now();
+    const now = new Date();
 
-    await db.insert(schema.users).values({
+    await db.insert(schema.user).values({
       id: userId,
-      redditId: "reddit_456",
-      redditUsername: "productowner",
-      accessToken: "access_token",
-      refreshToken: "refresh_token",
-      tokenExpiresAt: now + 3600000,
+      name: "productowner",
+      email: "product@example.com",
+      emailVerified: false,
       createdAt: now,
+      updatedAt: now,
     });
 
     await db.insert(schema.products).values({
@@ -120,7 +198,7 @@ describe("Database Schema", () => {
       name: "Test Product",
       description: "A test product description",
       targetAudience: "Developers",
-      createdAt: now,
+      createdAt: Date.now(),
     });
 
     const products = await db
@@ -137,16 +215,15 @@ describe("Database Schema", () => {
     const userId = crypto.randomUUID();
     const productId = crypto.randomUUID();
     const keywordId = crypto.randomUUID();
-    const now = Date.now();
+    const now = new Date();
 
-    await db.insert(schema.users).values({
+    await db.insert(schema.user).values({
       id: userId,
-      redditId: "reddit_789",
-      redditUsername: "keyworduser",
-      accessToken: "access_token",
-      refreshToken: "refresh_token",
-      tokenExpiresAt: now + 3600000,
+      name: "keyworduser",
+      email: "keyword@example.com",
+      emailVerified: false,
       createdAt: now,
+      updatedAt: now,
     });
 
     await db.insert(schema.products).values({
@@ -156,7 +233,7 @@ describe("Database Schema", () => {
       name: "Keyword Product",
       description: "Description",
       targetAudience: "Users",
-      createdAt: now,
+      createdAt: Date.now(),
     });
 
     await db.insert(schema.keywords).values({
@@ -178,16 +255,15 @@ describe("Database Schema", () => {
     const userId = crypto.randomUUID();
     const productId = crypto.randomUUID();
     const threadId = crypto.randomUUID();
-    const now = Date.now();
+    const now = new Date();
 
-    await db.insert(schema.users).values({
+    await db.insert(schema.user).values({
       id: userId,
-      redditId: "reddit_thread_user",
-      redditUsername: "threaduser",
-      accessToken: "access_token",
-      refreshToken: "refresh_token",
-      tokenExpiresAt: now + 3600000,
+      name: "threaduser",
+      email: "thread@example.com",
+      emailVerified: false,
       createdAt: now,
+      updatedAt: now,
     });
 
     await db.insert(schema.products).values({
@@ -197,7 +273,7 @@ describe("Database Schema", () => {
       name: "Thread Product",
       description: "Description",
       targetAudience: "Users",
-      createdAt: now,
+      createdAt: Date.now(),
     });
 
     await db.insert(schema.threads).values({
@@ -208,8 +284,8 @@ describe("Database Schema", () => {
       bodyPreview: "Thread body preview...",
       subreddit: "test",
       url: "https://reddit.com/r/test/abc123",
-      createdUtc: now,
-      discoveredAt: now,
+      createdUtc: Date.now(),
+      discoveredAt: Date.now(),
     });
 
     const threads = await db
@@ -228,16 +304,15 @@ describe("Database Schema", () => {
     const productId = crypto.randomUUID();
     const threadId = crypto.randomUUID();
     const historyId = crypto.randomUUID();
-    const now = Date.now();
+    const now = new Date();
 
-    await db.insert(schema.users).values({
+    await db.insert(schema.user).values({
       id: userId,
-      redditId: "reddit_history_user",
-      redditUsername: "historyuser",
-      accessToken: "access_token",
-      refreshToken: "refresh_token",
-      tokenExpiresAt: now + 3600000,
+      name: "historyuser",
+      email: "history@example.com",
+      emailVerified: false,
       createdAt: now,
+      updatedAt: now,
     });
 
     await db.insert(schema.products).values({
@@ -247,7 +322,7 @@ describe("Database Schema", () => {
       name: "History Product",
       description: "Description",
       targetAudience: "Users",
-      createdAt: now,
+      createdAt: Date.now(),
     });
 
     await db.insert(schema.threads).values({
@@ -258,8 +333,8 @@ describe("Database Schema", () => {
       bodyPreview: "Body preview...",
       subreddit: "test",
       url: "https://reddit.com/r/test/def456",
-      createdUtc: now,
-      discoveredAt: now,
+      createdUtc: Date.now(),
+      discoveredAt: Date.now(),
     });
 
     await db.insert(schema.postHistory).values({
@@ -269,7 +344,7 @@ describe("Database Schema", () => {
       threadId: threadId,
       responseSnippet: "This is my response snippet...",
       redditCommentUrl: "https://reddit.com/r/test/comments/def456/comment/xyz",
-      postedAt: now,
+      postedAt: Date.now(),
     });
 
     const history = await db
@@ -283,14 +358,13 @@ describe("Database Schema", () => {
   });
 
   test("schema exports correct types", () => {
-    const user: schema.NewUser = {
+    const userObj: schema.NewUser = {
       id: "test",
-      redditId: "reddit_id",
-      redditUsername: "username",
-      accessToken: "token",
-      refreshToken: "refresh",
-      tokenExpiresAt: Date.now(),
-      createdAt: Date.now(),
+      name: "username",
+      email: "email@example.com",
+      emailVerified: false,
+      createdAt: new Date(),
+      updatedAt: new Date(),
     };
 
     const product: schema.NewProduct = {
@@ -303,7 +377,7 @@ describe("Database Schema", () => {
       createdAt: Date.now(),
     };
 
-    expect(user.redditUsername).toBe("username");
+    expect(userObj.name).toBe("username");
     expect(product.name).toBe("Product");
   });
 });
