@@ -323,7 +323,7 @@ Mounted at `/api/*` via Next.js catch-all route.
 
 ### Phase 5: Monitoring
 - [x] Monitoring view with tabs
-- [ ] Thread dismiss/restore
+- [x] Thread dismiss/restore
 - [x] Post history tab
 - [ ] Manual refresh button
 

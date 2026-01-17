@@ -460,6 +460,58 @@ app.post("/threads/:id/mark-read", async (c) => {
   return c.json({ success: true });
 });
 
+app.post("/threads/:id/dismiss", async (c) => {
+  const user = c.get("user");
+  if (!user) {
+    return c.json({ error: "Unauthorized" }, 401);
+  }
+
+  const threadId = c.req.param("id");
+
+  const [thread] = await db.select().from(threads).where(eq(threads.id, threadId));
+  if (!thread) {
+    return c.json({ error: "Thread not found" }, 404);
+  }
+
+  const [product] = await db
+    .select()
+    .from(products)
+    .where(and(eq(products.id, thread.productId), eq(products.userId, user.id)));
+  if (!product) {
+    return c.json({ error: "Thread not found" }, 404);
+  }
+
+  await db.update(threads).set({ status: "dismissed" }).where(eq(threads.id, threadId));
+
+  return c.json({ success: true });
+});
+
+app.post("/threads/:id/restore", async (c) => {
+  const user = c.get("user");
+  if (!user) {
+    return c.json({ error: "Unauthorized" }, 401);
+  }
+
+  const threadId = c.req.param("id");
+
+  const [thread] = await db.select().from(threads).where(eq(threads.id, threadId));
+  if (!thread) {
+    return c.json({ error: "Thread not found" }, 404);
+  }
+
+  const [product] = await db
+    .select()
+    .from(products)
+    .where(and(eq(products.id, thread.productId), eq(products.userId, user.id)));
+  if (!product) {
+    return c.json({ error: "Thread not found" }, 404);
+  }
+
+  await db.update(threads).set({ status: "active" }).where(eq(threads.id, threadId));
+
+  return c.json({ success: true });
+});
+
 const generateResponseSchema = z.object({
   thread: z.object({
     title: z.string().min(1),

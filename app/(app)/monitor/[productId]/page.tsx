@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react"
 import { useParams } from "next/navigation"
-import { ExternalLink } from "lucide-react"
+import { ExternalLink, X, RotateCcw } from "lucide-react"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Badge } from "@/components/ui/badge"
@@ -117,6 +117,44 @@ export default function MonitorPage() {
       })
     }
   }, [product?.threads])
+
+  const handleDismiss = useCallback(async (threadId: string) => {
+    const res = await fetch(`/api/threads/${threadId}/dismiss`, { method: "POST" })
+    if (res.ok) {
+      setProduct((prev) => {
+        if (!prev) return prev
+        return {
+          ...prev,
+          threads: prev.threads.map((t) =>
+            t.id === threadId ? { ...t, status: "dismissed" as const } : t
+          ),
+        }
+      })
+      const remaining = product?.threads.filter(
+        (t) => t.status === "active" && t.id !== threadId
+      )
+      if (remaining && remaining.length > 0) {
+        setSelectedThreadId(remaining[0].id)
+      } else {
+        setSelectedThreadId(null)
+      }
+    }
+  }, [product?.threads])
+
+  const handleRestore = useCallback(async (threadId: string) => {
+    const res = await fetch(`/api/threads/${threadId}/restore`, { method: "POST" })
+    if (res.ok) {
+      setProduct((prev) => {
+        if (!prev) return prev
+        return {
+          ...prev,
+          threads: prev.threads.map((t) =>
+            t.id === threadId ? { ...t, status: "active" as const } : t
+          ),
+        }
+      })
+    }
+  }, [])
 
   if (isLoading) {
     return (
@@ -239,15 +277,25 @@ export default function MonitorPage() {
                             <span>r/{selectedThread.subreddit}</span>
                             <span>{formatRelativeTime(selectedThread.createdUtc)}</span>
                           </div>
-                          <a
-                            href={selectedThread.url}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="inline-flex items-center gap-1 text-sm text-primary hover:underline"
-                          >
-                            Open in Reddit
-                            <ExternalLink className="size-3" />
-                          </a>
+                          <div className="flex items-center gap-4">
+                            <a
+                              href={selectedThread.url}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="inline-flex items-center gap-1 text-sm text-primary hover:underline"
+                            >
+                              Open in Reddit
+                              <ExternalLink className="size-3" />
+                            </a>
+                            <button
+                              type="button"
+                              onClick={() => handleDismiss(selectedThread.id)}
+                              className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-destructive transition-colors"
+                            >
+                              <X className="size-3" />
+                              Dismiss
+                            </button>
+                          </div>
                         </div>
 
                         <div className="border-t pt-4 flex-1">
@@ -361,15 +409,25 @@ export default function MonitorPage() {
                             r/{thread.subreddit} · {formatRelativeTime(thread.createdUtc)}
                           </div>
                         </div>
-                        <a
-                          href={thread.url}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="inline-flex items-center gap-1 text-sm text-primary hover:underline shrink-0"
-                        >
-                          View
-                          <ExternalLink className="size-3" />
-                        </a>
+                        <div className="flex items-center gap-3 shrink-0">
+                          <button
+                            type="button"
+                            onClick={() => handleRestore(thread.id)}
+                            className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-primary transition-colors"
+                          >
+                            <RotateCcw className="size-3" />
+                            Restore
+                          </button>
+                          <a
+                            href={thread.url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="inline-flex items-center gap-1 text-sm text-primary hover:underline"
+                          >
+                            View
+                            <ExternalLink className="size-3" />
+                          </a>
+                        </div>
                       </div>
                     </div>
                   ))}

@@ -314,3 +314,20 @@
   - Tab filtering and navigation tests
   - History rendering and pluralization tests
 - Total: 183 tests passing across 16 files
+
+### Completed: Thread dismiss/restore
+
+- Updated `app/(app)/monitor/[productId]/page.tsx` with:
+  - Added `handleDismiss` callback to call dismiss API and update local state
+  - Added `handleRestore` callback to call restore API and update local state
+  - Added dismiss button in thread detail panel (next to Open in Reddit link)
+  - Added restore button in dismissed threads list items
+  - After dismiss, selection automatically moves to next active thread
+  - After dismiss last thread, selection becomes null
+- API endpoints already existed: POST `/api/threads/:id/dismiss` and POST `/api/threads/:id/restore`
+- Added test suite in `__tests__/dismiss-restore.test.ts` (17 tests):
+  - Dismiss API auth, 404, ownership validation, success, state change
+  - Restore API auth, 404, ownership validation, success, state change
+  - UI state changes for dismiss/restore (thread list movements, selection)
+  - Thread count integration (active count, new badge count)
+- Total: 200 tests passing across 17 files
