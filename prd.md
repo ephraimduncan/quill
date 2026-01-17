@@ -108,8 +108,8 @@ const openai = createOpenAI({
 ```
 
 **Files:**
-- [ ] `app/api/[[...route]]/route.ts` - Update AI imports/config
-- [ ] `.env.example` - Replace `OPENAI_API_KEY` with `VERCEL_AI_GATEWAY_API_KEY`
+- [x] `app/api/[[...route]]/route.ts` - Update AI imports/config
+- [x] `.env.example` - Replace `OPENAI_API_KEY` with `VERCEL_AI_GATEWAY_API_KEY`
 
 ---
 
@@ -119,7 +119,7 @@ const openai = createOpenAI({
 - [x] 2. Implement ID-based Reddit fetching
 - [x] 3. Test keyword matching with new fetch system
 - [x] 4. Remove post functionality from UI
-- [ ] 5. Switch to Vercel AI Gateway
+- [x] 5. Switch to Vercel AI Gateway
 - [ ] 6. Remove Reddit OAuth completely
 - [ ] 7. Update env vars, clean up dead code
 

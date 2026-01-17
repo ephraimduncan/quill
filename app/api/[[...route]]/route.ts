@@ -5,7 +5,12 @@ import { eq, count, and } from "drizzle-orm";
 import { JSDOM } from "jsdom";
 import { Readability } from "@mozilla/readability";
 import { generateObject, generateText } from "ai";
-import { openai } from "@ai-sdk/openai";
+import { createOpenAI } from "@ai-sdk/openai";
+
+const openai = createOpenAI({
+  baseURL: "https://gateway.ai.vercel.app/v1",
+  apiKey: process.env.VERCEL_AI_GATEWAY_API_KEY,
+});
 import { z } from "zod";
 import { auth } from "@/lib/auth";
 import { db, products, threads, keywords, redditSyncState } from "@/lib/db";

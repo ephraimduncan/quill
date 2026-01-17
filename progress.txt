@@ -548,3 +548,19 @@
   - Updated `__tests__/monitoring-tabs.test.ts` to remove history tab tests
   - Updated `__tests__/db.test.ts` to remove postHistory table test
 - Total: 272 tests passing across 24 files
+
+### Completed: Switch to Vercel AI Gateway (Migration Step 5)
+
+- Updated `app/api/[[...route]]/route.ts`:
+  - Changed from `import { openai } from "@ai-sdk/openai"` to `import { createOpenAI }`
+  - Created openai instance with Vercel AI Gateway baseURL: `https://gateway.ai.vercel.app/v1`
+  - Configured to use `VERCEL_AI_GATEWAY_API_KEY` environment variable
+- Updated `.env.example`:
+  - Replaced `OPENAI_API_KEY` with `VERCEL_AI_GATEWAY_API_KEY`
+  - Updated comment to reference "Vercel AI Gateway"
+- Added test suite in `__tests__/ai-gateway.test.ts` (8 tests):
+  - Verifies createOpenAI import (not direct openai import)
+  - Verifies Vercel AI Gateway baseURL configuration
+  - Verifies VERCEL_AI_GATEWAY_API_KEY usage
+  - Verifies .env.example has correct variable and no old OPENAI_API_KEY
+- Total: 280 tests passing across 25 files
