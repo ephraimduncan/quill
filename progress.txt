@@ -38,3 +38,17 @@
 - Updated test suite in `__tests__/db.test.ts` for new auth schema (7 tests)
 - Added auth test suite in `__tests__/auth.test.ts` (6 tests)
 - Total: 16 tests passing across 3 files
+
+### Completed: Build app shell (header, sidebar, mobile hamburger)
+
+- Created `components/header.tsx` with app name and hamburger menu trigger for mobile
+- Created `components/user-menu.tsx` with user avatar dropdown and sign out option
+- Created `components/sidebar.tsx` with navigation links (Products, Settings) and mobile overlay
+- Created `components/app-shell.tsx` combining Header and Sidebar with mobile state management
+- Created route group `app/(app)/` for authenticated pages with AppShell layout
+- Created `app/(app)/dashboard/page.tsx` placeholder for product cards
+- Created `app/(app)/settings/page.tsx` with sign out button
+- Updated `app/page.tsx` as landing page with Reddit sign-in and redirect to dashboard if authed
+- Updated root layout metadata (title: "Reddit Agent")
+- Added test suite in `__tests__/app-shell.test.ts` (8 tests)
+- Total: 24 tests passing across 4 files

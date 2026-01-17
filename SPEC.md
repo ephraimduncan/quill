@@ -304,7 +304,7 @@ Mounted at `/api/*` via Next.js catch-all route.
 - [x] Setup better-auth with Reddit OAuth
 
 ### Phase 2: Core UI
-- [ ] Build app shell (header, sidebar, mobile hamburger)
+- [x] Build app shell (header, sidebar, mobile hamburger)
 - [ ] Build dashboard with product cards
 - [ ] Build skeleton loading states
 
