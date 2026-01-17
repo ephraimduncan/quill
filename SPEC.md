@@ -36,12 +36,12 @@ Product makers need to discover Reddit threads where users discuss problems thei
 - **So that** I can post responses directly to Reddit
 
 **Acceptance Criteria:**
-- [ ] Reddit OAuth with scopes: `identity`, `read`, `submit`
-- [ ] Persistent login via refresh tokens in DB
-- [ ] Proactive token refresh (1 hour before expiry)
-- [ ] Re-auth prompt when token expires (browsing allowed, posting blocked)
-- [ ] Store Reddit username only
-- [ ] Redirect to /dashboard after OAuth
+- [x] Reddit OAuth with scopes: `identity`, `read`, `submit`
+- [x] Persistent login via refresh tokens in DB
+- [x] Proactive token refresh (1 hour before expiry)
+- [x] Re-auth prompt when token expires (browsing allowed, posting blocked)
+- [x] Store Reddit username only
+- [x] Redirect to /dashboard after OAuth
 
 ### US-2: Product Setup
 - **As a** user
@@ -330,7 +330,7 @@ Mounted at `/api/*` via Next.js catch-all route.
 ### Phase 6: Automation
 - [x] Vercel Cron job for daily discovery
 - [x] New thread badges
-- [ ] Token refresh logic
+- [x] Token refresh logic
 
 ---
 

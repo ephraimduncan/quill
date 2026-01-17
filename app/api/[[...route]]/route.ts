@@ -830,6 +830,55 @@ app.get("/cron/discover", async (c) => {
   });
 });
 
+const ONE_HOUR_MS = 60 * 60 * 1000;
+
+app.get("/auth/token-status", async (c) => {
+  const user = c.get("user");
+  if (!user) {
+    return c.json({ error: "Unauthorized" }, 401);
+  }
+
+  const [userAccount] = await db
+    .select()
+    .from(account)
+    .where(and(eq(account.userId, user.id), eq(account.providerId, "reddit")));
+
+  if (!userAccount) {
+    return c.json({ connected: false, valid: false, needsReauth: true });
+  }
+
+  if (!userAccount.accessToken) {
+    return c.json({ connected: true, valid: false, needsReauth: true });
+  }
+
+  const expiresAt = userAccount.accessTokenExpiresAt;
+  if (!expiresAt) {
+    return c.json({ connected: true, valid: true, needsReauth: false });
+  }
+
+  const now = Date.now();
+  const expiresAtMs = expiresAt.getTime();
+  const hasRefreshToken = !!userAccount.refreshToken;
+
+  if (expiresAtMs <= now) {
+    return c.json({
+      connected: true,
+      valid: false,
+      needsReauth: !hasRefreshToken,
+      canRefresh: hasRefreshToken,
+    });
+  }
+
+  const needsProactiveRefresh = expiresAtMs - now <= ONE_HOUR_MS;
+
+  return c.json({
+    connected: true,
+    valid: true,
+    needsReauth: false,
+    needsProactiveRefresh: needsProactiveRefresh && hasRefreshToken,
+  });
+});
+
 app.post("/response/post", async (c) => {
   const user = c.get("user");
   if (!user) {
@@ -845,13 +894,34 @@ app.post("/response/post", async (c) => {
 
   const { threadId, redditThreadId, productId, response } = parsed.data;
 
-  const [userAccount] = await db
-    .select()
-    .from(account)
-    .where(and(eq(account.userId, user.id), eq(account.providerId, "reddit")));
+  let accessToken: string | null = null;
 
-  if (!userAccount || !userAccount.accessToken) {
-    return c.json({ error: "Reddit account not connected" }, 401);
+  try {
+    const tokenResult = await auth.api.getAccessToken({
+      body: { providerId: "reddit", userId: user.id },
+    });
+    accessToken = tokenResult?.accessToken ?? null;
+  } catch {
+    accessToken = null;
+  }
+
+  if (!accessToken) {
+    const [userAccount] = await db
+      .select()
+      .from(account)
+      .where(and(eq(account.userId, user.id), eq(account.providerId, "reddit")));
+
+    if (!userAccount?.refreshToken) {
+      return c.json(
+        { error: "Reddit session expired. Please sign in again.", needsReauth: true },
+        401
+      );
+    }
+
+    return c.json(
+      { error: "Failed to refresh Reddit token. Please sign in again.", needsReauth: true },
+      401
+    );
   }
 
   const formData = new URLSearchParams();
@@ -865,7 +935,7 @@ app.post("/response/post", async (c) => {
       {
         method: "POST",
         headers: {
-          Authorization: `Bearer ${userAccount.accessToken}`,
+          Authorization: `Bearer ${accessToken}`,
           "Content-Type": "application/x-www-form-urlencoded",
           "User-Agent": "RedditAgent/1.0",
         },

@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react"
 import { useParams } from "next/navigation"
-import { ExternalLink, X, RotateCcw, RefreshCw } from "lucide-react"
+import { ExternalLink, X, RotateCcw, RefreshCw, AlertCircle } from "lucide-react"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Badge } from "@/components/ui/badge"
@@ -11,6 +11,7 @@ import { Button } from "@/components/ui/button"
 import { Spinner } from "@/components/ui/spinner"
 import { ResponseEditorPanel } from "@/components/response-editor-panel"
 import { toast } from "sonner"
+import { signIn } from "@/lib/auth/client"
 
 type Thread = {
   id: string
@@ -67,13 +68,15 @@ export default function MonitorPage() {
   const [selectedThreadId, setSelectedThreadId] = useState<string | null>(null)
   const [activeTab, setActiveTab] = useState("threads")
   const [isRefreshing, setIsRefreshing] = useState(false)
+  const [tokenExpired, setTokenExpired] = useState(false)
 
   useEffect(() => {
     async function fetchData() {
       try {
-        const [productRes, historyRes] = await Promise.all([
+        const [productRes, historyRes, tokenRes] = await Promise.all([
           fetch(`/api/products/${productId}`),
           fetch(`/api/history/${productId}`),
+          fetch("/api/auth/token-status"),
         ])
 
         const productData = await productRes.json()
@@ -93,6 +96,11 @@ export default function MonitorPage() {
         if (historyRes.ok) {
           const historyData = await historyRes.json()
           setHistory(historyData)
+        }
+
+        if (tokenRes.ok) {
+          const tokenData = await tokenRes.json()
+          setTokenExpired(tokenData.needsReauth === true)
         }
       } catch {
         setError("Failed to connect to server")
@@ -191,6 +199,10 @@ export default function MonitorPage() {
     }
   }, [productId])
 
+  const handleReauth = async () => {
+    await signIn.social({ provider: "reddit", callbackURL: window.location.href })
+  }
+
   if (isLoading) {
     return (
       <div className="max-w-5xl mx-auto py-8 px-4">
@@ -237,6 +249,18 @@ export default function MonitorPage() {
         <h1 className="text-2xl font-bold">{product.name}</h1>
         <p className="text-muted-foreground">{product.description}</p>
       </div>
+
+      {tokenExpired && (
+        <div className="flex items-center gap-3 p-4 mb-6 bg-amber-50 border border-amber-200 rounded-md">
+          <AlertCircle className="size-5 text-amber-600 shrink-0" />
+          <div className="flex-1 text-sm text-amber-800">
+            Your Reddit session has expired. You can browse threads, but you&apos;ll need to sign in again to post.
+          </div>
+          <Button size="sm" variant="outline" onClick={handleReauth}>
+            Sign in with Reddit
+          </Button>
+        </div>
+      )}
 
       <Tabs value={activeTab} onValueChange={setActiveTab}>
         <TabsList>
@@ -372,6 +396,7 @@ export default function MonitorPage() {
                               description: product.description,
                               targetAudience: product.targetAudience,
                             }}
+                            tokenExpired={tokenExpired}
                           />
                         </div>
                       </div>

@@ -383,3 +383,37 @@
   - Multi-product processing
   - vercel.json configuration validation
 - Total: 234 tests passing across 19 files
+
+### Completed: Token refresh logic
+
+- Updated `lib/auth/index.ts` with:
+  - Added `refreshRedditToken` function to call Reddit's token refresh API
+  - Uses Basic auth with client credentials
+  - Returns new accessToken, refreshToken, and expiresIn
+  - Added `refreshAccessToken` callback to Reddit OAuth provider config
+  - Integrates with better-auth's automatic token refresh mechanism
+- Created GET `/api/auth/token-status` endpoint in `app/api/[[...route]]/route.ts`:
+  - Returns token status: connected, valid, needsReauth, canRefresh, needsProactiveRefresh
+  - Checks if token expires within 1 hour for proactive refresh
+  - Returns needsReauth=true when token expired and no refresh token available
+- Updated POST `/api/response/post` endpoint:
+  - Uses `auth.api.getAccessToken` for automatic token refresh
+  - Returns `needsReauth: true` in response when token refresh fails
+  - Differentiates between expired session and failed refresh errors
+- Updated `components/response-editor-panel.tsx`:
+  - Added `tokenExpired` prop to control re-auth prompt display
+  - Added re-auth banner with sign-in button when token expired
+  - Post button disabled when token is expired
+  - Handles `needsReauth` response from post API
+- Updated `app/(app)/monitor/[productId]/page.tsx`:
+  - Fetches token status on page load in parallel with product data
+  - Displays top-level re-auth banner when token expired
+  - Passes `tokenExpired` prop to ResponseEditorPanel
+  - Allows browsing threads while token is expired
+- Added test suite in `__tests__/token-refresh.test.ts` (19 tests):
+  - Token status endpoint auth validation
+  - Token status for various states (no account, no token, expired, valid, near expiry)
+  - Post endpoint needsReauth response handling
+  - ResponseEditorPanel re-auth behavior
+  - Monitor page token status integration
+- Total: 253 tests passing across 20 files

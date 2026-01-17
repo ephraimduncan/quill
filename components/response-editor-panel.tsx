@@ -1,11 +1,12 @@
 "use client"
 
 import { useState } from "react"
-import { RefreshCw, Send, Sparkles } from "lucide-react"
+import { RefreshCw, Send, Sparkles, AlertCircle } from "lucide-react"
 import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
 import { Spinner } from "@/components/ui/spinner"
+import { signIn } from "@/lib/auth/client"
 
 type Thread = {
   id: string
@@ -27,6 +28,7 @@ type ResponseEditorPanelProps = {
   product: Product
   onResponseChange?: (response: string) => void
   onPostSuccess?: (commentUrl: string | null) => void
+  tokenExpired?: boolean
 }
 
 export function ResponseEditorPanel({
@@ -34,12 +36,14 @@ export function ResponseEditorPanel({
   product,
   onResponseChange,
   onPostSuccess,
+  tokenExpired = false,
 }: ResponseEditorPanelProps) {
   const [response, setResponse] = useState("")
   const [isGenerating, setIsGenerating] = useState(false)
   const [isPosting, setIsPosting] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [isPosted, setIsPosted] = useState(false)
+  const [needsReauth, setNeedsReauth] = useState(tokenExpired)
 
   const generateResponse = async () => {
     setIsGenerating(true)
@@ -103,6 +107,9 @@ export function ResponseEditorPanel({
       const data = await res.json()
 
       if (!res.ok) {
+        if (data.needsReauth) {
+          setNeedsReauth(true)
+        }
         setError(data.error || "Failed to post to Reddit")
         return
       }
@@ -117,10 +124,27 @@ export function ResponseEditorPanel({
     }
   }
 
+  const handleReauth = async () => {
+    await signIn.social({ provider: "reddit", callbackURL: window.location.href })
+  }
+
   const hasResponse = response.length > 0
+  const postingDisabled = isPosting || isPosted || !response.trim() || needsReauth
 
   return (
     <div className="space-y-4">
+      {needsReauth && (
+        <div className="flex items-center gap-3 p-3 bg-amber-50 border border-amber-200 rounded-md">
+          <AlertCircle className="size-5 text-amber-600 shrink-0" />
+          <div className="flex-1 text-sm text-amber-800">
+            Your Reddit session has expired. Please sign in again to post.
+          </div>
+          <Button size="sm" variant="outline" onClick={handleReauth}>
+            Sign in
+          </Button>
+        </div>
+      )}
+
       {!hasResponse && !isGenerating && (
         <Button onClick={generateResponse} className="w-full">
           <Sparkles className="size-4 mr-2" />
@@ -135,7 +159,7 @@ export function ResponseEditorPanel({
         </div>
       )}
 
-      {error && <p className="text-sm text-destructive">{error}</p>}
+      {error && !needsReauth && <p className="text-sm text-destructive">{error}</p>}
 
       {hasResponse && !isGenerating && (
         <>
@@ -158,7 +182,7 @@ export function ResponseEditorPanel({
             </Button>
             <Button
               onClick={postToReddit}
-              disabled={isPosting || isPosted || !response.trim()}
+              disabled={postingDisabled}
             >
               {isPosting ? (
                 <>
