@@ -328,7 +328,7 @@ Mounted at `/api/*` via Next.js catch-all route.
 - [x] Manual refresh button
 
 ### Phase 6: Automation
-- [ ] Vercel Cron job for daily discovery
+- [x] Vercel Cron job for daily discovery
 - [x] New thread badges
 - [ ] Token refresh logic
 

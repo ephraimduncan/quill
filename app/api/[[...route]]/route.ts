@@ -704,6 +704,132 @@ const postResponseSchema = z.object({
   response: z.string().min(1),
 });
 
+app.get("/cron/discover", async (c) => {
+  const authHeader = c.req.header("authorization");
+  if (!process.env.CRON_SECRET || authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
+    return c.json({ error: "Unauthorized" }, 401);
+  }
+
+  const allProducts = await db.select().from(products);
+
+  let totalNewThreads = 0;
+  const errors: Array<{ productId: string; error: string }> = [];
+
+  for (const product of allProducts) {
+    const productKeywords = await db
+      .select()
+      .from(keywords)
+      .where(eq(keywords.productId, product.id));
+
+    if (productKeywords.length === 0) continue;
+
+    const existingThreads = await db
+      .select({ redditThreadId: threads.redditThreadId })
+      .from(threads)
+      .where(eq(threads.productId, product.id));
+
+    const existingIds = new Set(existingThreads.map((t) => t.redditThreadId));
+    const sevenDaysAgo = Math.floor(Date.now() / 1000) - 7 * 24 * 60 * 60;
+    const seenIds = new Set<string>();
+    const newThreads: Array<{
+      redditThreadId: string;
+      title: string;
+      bodyPreview: string;
+      subreddit: string;
+      url: string;
+      createdUtc: number;
+    }> = [];
+
+    for (const kw of productKeywords) {
+      const maxRetries = 3;
+      let attempt = 0;
+      let success = false;
+
+      while (attempt < maxRetries && !success) {
+        attempt++;
+        try {
+          const searchUrl = new URL("https://www.reddit.com/search.json");
+          searchUrl.searchParams.set("q", kw.keyword);
+          searchUrl.searchParams.set("sort", "new");
+          searchUrl.searchParams.set("limit", "10");
+          searchUrl.searchParams.set("t", "week");
+          searchUrl.searchParams.set("type", "link");
+
+          const response = await fetch(searchUrl.toString(), {
+            headers: { "User-Agent": "RedditAgent/1.0" },
+          });
+
+          if (!response.ok) {
+            if (attempt === maxRetries) {
+              errors.push({
+                productId: product.id,
+                error: `Failed to search keyword "${kw.keyword}": ${response.status}`,
+              });
+            }
+            continue;
+          }
+
+          const data = await response.json();
+          const posts = data?.data?.children || [];
+
+          for (const post of posts) {
+            const thread = post.data as RedditThread;
+            if (seenIds.has(thread.id)) continue;
+            if (existingIds.has(thread.id)) continue;
+            if (thread.created_utc < sevenDaysAgo) continue;
+
+            seenIds.add(thread.id);
+            newThreads.push({
+              redditThreadId: thread.id,
+              title: thread.title,
+              bodyPreview: (thread.selftext || "").slice(0, 200),
+              subreddit: thread.subreddit,
+              url: `https://reddit.com${thread.permalink}`,
+              createdUtc: thread.created_utc,
+            });
+          }
+
+          success = true;
+        } catch (err) {
+          if (attempt === maxRetries) {
+            errors.push({
+              productId: product.id,
+              error: `Failed to search keyword "${kw.keyword}": ${err instanceof Error ? err.message : "Unknown error"}`,
+            });
+          }
+        }
+      }
+    }
+
+    if (newThreads.length > 0) {
+      const now = Math.floor(Date.now() / 1000);
+      await db.insert(threads).values(
+        newThreads.map((thread) => ({
+          id: randomUUID(),
+          productId: product.id,
+          redditThreadId: thread.redditThreadId,
+          title: thread.title,
+          bodyPreview: thread.bodyPreview,
+          subreddit: thread.subreddit,
+          url: thread.url,
+          createdUtc: thread.createdUtc,
+          discoveredAt: now,
+          status: "active" as const,
+          isNew: true,
+        }))
+      );
+      totalNewThreads += newThreads.length;
+    }
+  }
+
+  return c.json({
+    success: true,
+    productsProcessed: allProducts.length,
+    newThreadsFound: totalNewThreads,
+    errors: errors.length > 0 ? errors : undefined,
+  });
+});
+
 app.post("/response/post", async (c) => {
   const user = c.get("user");
   if (!user) {

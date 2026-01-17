@@ -358,3 +358,28 @@
   - New thread insertion with correct properties
   - UI toast message formatting
 - Total: 217 tests passing across 18 files
+
+### Completed: Vercel Cron job for daily discovery
+
+- Created GET `/api/cron/discover` endpoint in `app/api/[[...route]]/route.ts`:
+  - Validates authorization via CRON_SECRET environment variable
+  - Iterates all products in database (not user-specific)
+  - For each product, fetches associated keywords
+  - Skips products with no keywords
+  - Searches Reddit for each keyword with retry logic (up to 3 attempts)
+  - Deduplicates threads by redditThreadId against existing threads
+  - Filters out threads older than 7 days
+  - Inserts new threads with `isNew=true`, `status='active'`
+  - Returns summary: productsProcessed, newThreadsFound, errors (if any)
+- Created `vercel.json` with cron configuration:
+  - Schedule: `0 6 * * *` (daily at 6:00 UTC)
+  - Path: `/api/cron/discover`
+- Updated `.env.example` with CRON_SECRET variable
+- Added test suite in `__tests__/cron-discover.test.ts` (17 tests):
+  - Auth validation (401 for missing/wrong secret, undefined CRON_SECRET)
+  - Success response structure validation
+  - Thread discovery and insertion logic
+  - Deduplication and age filtering
+  - Multi-product processing
+  - vercel.json configuration validation
+- Total: 234 tests passing across 19 files
