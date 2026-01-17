@@ -466,3 +466,20 @@
   - UI/UX Requirements: Layout (4), Loading States (2), Wizard (3), Errors (2)
 - Updated Technical Note #8 to reflect server-side Reddit posting (more secure than client-side)
 - Total: 270 tests passing across 21 files
+
+### Completed: Email/password auth alongside Reddit (Migration Step 1)
+
+- Updated `lib/auth/index.ts` with `emailAndPassword: { enabled: true }` config
+- Updated `lib/auth/client.ts` to export `signUp` method
+- Created `app/(auth)/login/page.tsx` with email/password form
+- Created `app/(auth)/signup/page.tsx` with name/email/password form
+- Updated `app/page.tsx` with "Get started" and "Sign in" buttons linking to /signup and /login
+- Reddit OAuth kept temporarily (migration phase - will remove in later step)
+- No email verification required - immediate access after signup
+- Added test suite in `__tests__/email-password-auth.test.ts` (22 tests):
+  - Auth config verification (emailAndPassword enabled, Reddit kept)
+  - Auth client exports (signUp, signIn with .email methods)
+  - Login page structure (email/password inputs, signIn.email, link to signup)
+  - Signup page structure (name/email/password inputs, minLength validation, signUp.email, link to login)
+  - Landing page (links to /signup and /login, no Reddit button)
+- Total: 292 tests passing across 22 files

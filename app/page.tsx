@@ -2,10 +2,10 @@
 
 import { useEffect } from "react"
 import { useRouter } from "next/navigation"
-import { IconBrandReddit } from "@tabler/icons-react"
+import Link from "next/link"
 import { Button } from "@/components/ui/button"
 import { Spinner } from "@/components/ui/spinner"
-import { useSession, signIn } from "@/lib/auth/client"
+import { useSession } from "@/lib/auth/client"
 
 export default function LandingPage() {
   const router = useRouter()
@@ -16,10 +16,6 @@ export default function LandingPage() {
       router.replace("/dashboard")
     }
   }, [session, router])
-
-  const handleSignIn = () => {
-    signIn.social({ provider: "reddit" })
-  }
 
   if (isPending) {
     return (
@@ -41,10 +37,14 @@ export default function LandingPage() {
           Discover Reddit threads where users discuss problems your product solves,
           and engage authentically to drive awareness.
         </p>
-        <Button size="lg" onClick={handleSignIn} className="gap-2">
-          <IconBrandReddit className="size-5" />
-          Sign in with Reddit
-        </Button>
+        <div className="flex flex-col gap-3">
+          <Button size="lg" asChild>
+            <Link href="/signup">Get started</Link>
+          </Button>
+          <Button size="lg" variant="outline" asChild>
+            <Link href="/login">Sign in</Link>
+          </Button>
+        </div>
       </div>
     </div>
   )

@@ -45,6 +45,9 @@ export const auth = betterAuth({
     provider: "sqlite",
     schema: authSchema,
   }),
+  emailAndPassword: {
+    enabled: true,
+  },
   socialProviders: {
     reddit: {
       clientId: process.env.REDDIT_CLIENT_ID!,
