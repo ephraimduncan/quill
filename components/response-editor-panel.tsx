@@ -1,18 +1,21 @@
 "use client"
 
 import { useState } from "react"
-import { RefreshCw, Sparkles } from "lucide-react"
+import { RefreshCw, Send, Sparkles } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
 import { Spinner } from "@/components/ui/spinner"
 
 type Thread = {
+  id: string
+  redditThreadId: string
   title: string
   bodyPreview: string
   subreddit: string
 }
 
 type Product = {
+  id: string
   name: string
   description: string
   targetAudience: string
@@ -22,16 +25,20 @@ type ResponseEditorPanelProps = {
   thread: Thread
   product: Product
   onResponseChange?: (response: string) => void
+  onPostSuccess?: (commentUrl: string | null) => void
 }
 
 export function ResponseEditorPanel({
   thread,
   product,
   onResponseChange,
+  onPostSuccess,
 }: ResponseEditorPanelProps) {
   const [response, setResponse] = useState("")
   const [isGenerating, setIsGenerating] = useState(false)
+  const [isPosting, setIsPosting] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [isPosted, setIsPosted] = useState(false)
 
   const generateResponse = async () => {
     setIsGenerating(true)
@@ -76,6 +83,38 @@ export function ResponseEditorPanel({
     onResponseChange?.(value)
   }
 
+  const postToReddit = async () => {
+    setIsPosting(true)
+    setError(null)
+
+    try {
+      const res = await fetch("/api/response/post", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          threadId: thread.id,
+          redditThreadId: thread.redditThreadId,
+          productId: product.id,
+          response,
+        }),
+      })
+
+      const data = await res.json()
+
+      if (!res.ok) {
+        setError(data.error || "Failed to post to Reddit")
+        return
+      }
+
+      setIsPosted(true)
+      onPostSuccess?.(data.commentUrl)
+    } catch {
+      setError("Failed to connect to server")
+    } finally {
+      setIsPosting(false)
+    }
+  }
+
   const hasResponse = response.length > 0
 
   return (
@@ -104,15 +143,34 @@ export function ResponseEditorPanel({
             placeholder="Your response..."
             rows={10}
             className="resize-none"
+            disabled={isPosted || isPosting}
           />
           <div className="flex gap-2">
             <Button
               variant="outline"
               onClick={generateResponse}
-              disabled={isGenerating}
+              disabled={isGenerating || isPosting || isPosted}
             >
               <RefreshCw className="size-4 mr-2" />
               Regenerate
+            </Button>
+            <Button
+              onClick={postToReddit}
+              disabled={isPosting || isPosted || !response.trim()}
+            >
+              {isPosting ? (
+                <>
+                  <Spinner size="sm" className="mr-2" />
+                  Posting...
+                </>
+              ) : isPosted ? (
+                "Posted"
+              ) : (
+                <>
+                  <Send className="size-4 mr-2" />
+                  Post to Reddit
+                </>
+              )}
             </Button>
           </div>
         </>

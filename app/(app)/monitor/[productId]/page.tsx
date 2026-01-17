@@ -190,11 +190,14 @@ export default function MonitorPage() {
                       <ResponseEditorPanel
                         key={selectedThread.id}
                         thread={{
+                          id: selectedThread.id,
+                          redditThreadId: selectedThread.redditThreadId,
                           title: selectedThread.title,
                           bodyPreview: selectedThread.bodyPreview,
                           subreddit: selectedThread.subreddit,
                         }}
                         product={{
+                          id: product.id,
                           name: product.name,
                           description: product.description,
                           targetAudience: product.targetAudience,

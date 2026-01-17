@@ -245,3 +245,31 @@
   - formatRelativeTime calculations
   - Monitor page data handling (filtering, selection, truncation)
 - Total: 135 tests passing across 13 files
+
+### Completed: Reddit posting (client-side)
+
+- Created POST `/api/response/post` endpoint in `app/api/[[...route]]/route.ts`:
+  - Validates authentication and request schema with Zod
+  - Fetches user's Reddit access token from account table
+  - Posts comment to Reddit's OAuth API (oauth.reddit.com/api/comment)
+  - Handles Reddit error responses (locked thread, archived, deleted)
+  - Records post to postHistory table with snippet and comment URL
+  - Returns success with comment URL or error with Reddit's message
+- Updated `components/response-editor-panel.tsx`:
+  - Added Post to Reddit button (appears after response generated)
+  - One-click post with no confirmation
+  - Loading state during posting
+  - Disabled state after successful post
+  - Shows Reddit's error message on failure
+  - Added thread.id, thread.redditThreadId, product.id props
+- Updated `app/(app)/monitor/[productId]/page.tsx`:
+  - Pass required thread and product IDs to ResponseEditorPanel
+- Added test suite in `__tests__/post.test.ts` (20 tests):
+  - Auth validation (401 for unauthenticated)
+  - Schema validation (missing fields, empty response)
+  - Reddit account validation (no account, null token)
+  - Success response with comment URL
+  - Reddit error handling (locked, archived, deleted)
+  - Network error handling
+  - Missing permalink handling
+- Total: 155 tests passing across 14 files

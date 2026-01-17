@@ -8,7 +8,7 @@ import { generateObject, generateText } from "ai";
 import { openai } from "@ai-sdk/openai";
 import { z } from "zod";
 import { auth } from "@/lib/auth";
-import { db, products, threads, keywords } from "@/lib/db";
+import { db, products, threads, keywords, account, postHistory } from "@/lib/db";
 
 type Variables = {
   user: typeof auth.$Infer.Session.user | null;
@@ -461,6 +461,89 @@ Write only the response text, nothing else.`;
   } catch (err) {
     return c.json(
       { error: `Failed to generate response: ${err instanceof Error ? err.message : "Unknown error"}` },
+      500
+    );
+  }
+});
+
+const postResponseSchema = z.object({
+  threadId: z.string().min(1),
+  redditThreadId: z.string().min(1),
+  productId: z.string().min(1),
+  response: z.string().min(1),
+});
+
+app.post("/response/post", async (c) => {
+  const user = c.get("user");
+  if (!user) {
+    return c.json({ error: "Unauthorized" }, 401);
+  }
+
+  const body = await c.req.json();
+  const parsed = postResponseSchema.safeParse(body);
+
+  if (!parsed.success) {
+    return c.json({ error: "Invalid request data" }, 400);
+  }
+
+  const { threadId, redditThreadId, productId, response } = parsed.data;
+
+  const [userAccount] = await db
+    .select()
+    .from(account)
+    .where(and(eq(account.userId, user.id), eq(account.providerId, "reddit")));
+
+  if (!userAccount || !userAccount.accessToken) {
+    return c.json({ error: "Reddit account not connected" }, 401);
+  }
+
+  const formData = new URLSearchParams();
+  formData.append("api_type", "json");
+  formData.append("thing_id", `t3_${redditThreadId}`);
+  formData.append("text", response);
+
+  try {
+    const redditResponse = await fetch(
+      "https://oauth.reddit.com/api/comment",
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${userAccount.accessToken}`,
+          "Content-Type": "application/x-www-form-urlencoded",
+          "User-Agent": "RedditAgent/1.0",
+        },
+        body: formData.toString(),
+      }
+    );
+
+    const data = await redditResponse.json();
+
+    if (data.json?.errors?.length > 0) {
+      const [errorCode, errorMessage] = data.json.errors[0];
+      return c.json({ error: errorMessage || errorCode }, 400);
+    }
+
+    const commentData = data.json?.data?.things?.[0]?.data;
+    const commentUrl = commentData?.permalink
+      ? `https://reddit.com${commentData.permalink}`
+      : null;
+
+    await db.insert(postHistory).values({
+      id: randomUUID(),
+      userId: user.id,
+      productId,
+      threadId,
+      responseSnippet: response.slice(0, 100),
+      redditCommentUrl: commentUrl || "",
+      postedAt: Math.floor(Date.now() / 1000),
+    });
+
+    return c.json({ success: true, commentUrl });
+  } catch (err) {
+    return c.json(
+      {
+        error: `Failed to post to Reddit: ${err instanceof Error ? err.message : "Unknown error"}`,
+      },
       500
     );
   }
