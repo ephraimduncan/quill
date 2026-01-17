@@ -80,6 +80,40 @@ const createProductSchema = z.object({
   ),
 });
 
+app.get("/products/:id", async (c) => {
+  const user = c.get("user");
+  if (!user) {
+    return c.json({ error: "Unauthorized" }, 401);
+  }
+
+  const productId = c.req.param("id");
+
+  const [product] = await db
+    .select()
+    .from(products)
+    .where(and(eq(products.id, productId), eq(products.userId, user.id)));
+
+  if (!product) {
+    return c.json({ error: "Product not found" }, 404);
+  }
+
+  const productKeywords = await db
+    .select()
+    .from(keywords)
+    .where(eq(keywords.productId, productId));
+
+  const productThreads = await db
+    .select()
+    .from(threads)
+    .where(eq(threads.productId, productId));
+
+  return c.json({
+    ...product,
+    keywords: productKeywords.map((k) => k.keyword),
+    threads: productThreads,
+  });
+});
+
 app.post("/products", async (c) => {
   const user = c.get("user");
   if (!user) {

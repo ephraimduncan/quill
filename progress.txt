@@ -217,3 +217,31 @@
   - Works with empty optional fields
   - Schema validation tests
 - Total: 120 tests passing across 12 files
+
+### Completed: Response editor panel
+
+- Created `components/response-editor-panel.tsx` with:
+  - Generate Response button that triggers API call
+  - Loading spinner during generation (no streaming)
+  - Plain textarea for editing response
+  - Regenerate button for variation
+  - Error display for failed generation
+- Created GET `/api/products/:id` endpoint in `app/api/[[...route]]/route.ts`:
+  - Returns product with keywords and threads
+  - Validates user owns the product
+  - Returns 404 for non-existent or unauthorized products
+- Updated `app/(app)/monitor/[productId]/page.tsx` with:
+  - Fetches product data on mount
+  - Thread split view (40/60 ratio) for active threads
+  - Thread list with title, subreddit, relative age
+  - Thread detail panel with title, preview, metadata, Open in Reddit link
+  - ResponseEditorPanel integrated in thread detail
+  - Loading skeleton during data fetch
+  - Error state for failed loads
+- Added test suite in `__tests__/response-editor.test.ts` (15 tests):
+  - GET /api/products/:id auth, 404, ownership validation
+  - Product response includes keywords and threads arrays
+  - Thread structure and status validation
+  - formatRelativeTime calculations
+  - Monitor page data handling (filtering, selection, truncation)
+- Total: 135 tests passing across 13 files
