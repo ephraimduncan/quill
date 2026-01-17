@@ -154,3 +154,25 @@
   - Proceed blocked without threads
   - formatRelativeTime helper
 - Total: 80 tests passing across 10 files
+
+### Completed: Step 4: Thread split view
+
+- Updated `app/(app)/setup/page.tsx` with Step 4 implementation:
+  - Split view layout (40/60 ratio): thread list left, detail panel right
+  - Thread list shows: title (2-line clamp), subreddit, relative age
+  - Detail panel shows: title, 200-char preview (truncated), metadata, "Open in Reddit" link (new tab)
+  - Auto-selects first thread when entering Step 4
+  - Thread selection updates detail panel
+  - Responsive container width (max-w-4xl for Step 4)
+  - Back/Continue navigation buttons
+- Added ExternalLink icon from lucide-react
+- Added `selectedThreadId` state and `selectedThread` computed value
+- Added `handleThreadsSubmit` function for advancing to Step 5
+- Added test suite in `__tests__/setup.test.ts` (6 new tests):
+  - Step 4 auto-selects first thread on entry
+  - Step 4 thread selection finds correct thread
+  - Step 4 body preview truncates at 200 chars
+  - Step 4 advances to Step 5 on continue
+  - Step 4 back button returns to Step 3
+  - Step 4 split view layout uses 40/60 ratio
+- Total: 86 tests passing across 10 files

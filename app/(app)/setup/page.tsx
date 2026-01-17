@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react"
 import { useRouter } from "next/navigation"
-import { ArrowLeft, ArrowRight, Globe, Plus, X } from "lucide-react"
+import { ArrowLeft, ArrowRight, ExternalLink, Globe, Plus, X } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
@@ -68,6 +68,7 @@ export default function SetupPage() {
   const [isGeneratingKeywords, setIsGeneratingKeywords] = useState(false)
   const [isSearchingThreads, setIsSearchingThreads] = useState(false)
   const [newKeyword, setNewKeyword] = useState("")
+  const [selectedThreadId, setSelectedThreadId] = useState<string | null>(null)
 
   const handleUrlSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -206,8 +207,15 @@ export default function SetupPage() {
       return
     }
     setError(null)
+    setSelectedThreadId(state.threads[0]?.redditThreadId || null)
     setState((prev) => ({ ...prev, step: 4 }))
   }
+
+  const handleThreadsSubmit = () => {
+    setState((prev) => ({ ...prev, step: 5 }))
+  }
+
+  const selectedThread = state.threads.find((t) => t.redditThreadId === selectedThreadId)
 
   const formatRelativeTime = (timestamp: number) => {
     const seconds = Math.floor(Date.now() / 1000 - timestamp)
@@ -221,7 +229,7 @@ export default function SetupPage() {
   }
 
   return (
-    <div className="mx-auto max-w-2xl py-8 px-4">
+    <div className={`mx-auto py-8 px-4 ${state.step === 4 ? "max-w-4xl" : "max-w-2xl"}`}>
       <div className="mb-8">
         <StepIndicator currentStep={state.step} totalSteps={TOTAL_STEPS} />
       </div>
@@ -467,6 +475,81 @@ export default function SetupPage() {
                 </div>
               </>
             )}
+          </CardContent>
+        </Card>
+      )}
+
+      {state.step === 4 && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Review threads</CardTitle>
+            <CardDescription>
+              Browse the discovered threads and select ones relevant to your product.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="flex gap-4 min-h-[400px]">
+              <div className="w-2/5 border rounded-md overflow-hidden">
+                <div className="max-h-[400px] overflow-y-auto">
+                  {state.threads.map((thread) => (
+                    <button
+                      key={thread.redditThreadId}
+                      type="button"
+                      onClick={() => setSelectedThreadId(thread.redditThreadId)}
+                      className={`w-full text-left p-3 border-b last:border-b-0 hover:bg-muted/50 transition-colors ${
+                        selectedThreadId === thread.redditThreadId ? "bg-muted" : ""
+                      }`}
+                    >
+                      <div className="font-medium text-sm line-clamp-2">{thread.title}</div>
+                      <div className="text-xs text-muted-foreground mt-1">
+                        r/{thread.subreddit} · {formatRelativeTime(thread.createdUtc)}
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="w-3/5 border rounded-md p-4">
+                {selectedThread ? (
+                  <div className="space-y-4">
+                    <h3 className="font-semibold text-lg">{selectedThread.title}</h3>
+                    <p className="text-sm text-muted-foreground">
+                      {selectedThread.bodyPreview.length > 200
+                        ? `${selectedThread.bodyPreview.slice(0, 200)}...`
+                        : selectedThread.bodyPreview || "No preview available"}
+                    </p>
+                    <div className="flex items-center gap-4 text-sm text-muted-foreground">
+                      <span>r/{selectedThread.subreddit}</span>
+                      <span>{formatRelativeTime(selectedThread.createdUtc)}</span>
+                    </div>
+                    <a
+                      href={selectedThread.url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-1 text-sm text-primary hover:underline"
+                    >
+                      Open in Reddit
+                      <ExternalLink className="size-3" />
+                    </a>
+                  </div>
+                ) : (
+                  <div className="flex items-center justify-center h-full text-muted-foreground">
+                    Select a thread to view details
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <div className="flex justify-between pt-6">
+              <Button type="button" variant="outline" onClick={handleBack}>
+                <ArrowLeft data-icon="inline-start" />
+                Back
+              </Button>
+              <Button type="button" onClick={handleThreadsSubmit}>
+                Continue
+                <ArrowRight data-icon="inline-end" />
+              </Button>
+            </div>
           </CardContent>
         </Card>
       )}

@@ -312,7 +312,7 @@ Mounted at `/api/*` via Next.js catch-all route.
 - [x] Step 1: URL input + extraction API
 - [x] Step 2: Product info form
 - [x] Step 3: Keyword generation + thread auto-preview
-- [ ] Step 4: Thread split view
+- [x] Step 4: Thread split view
 - [ ] Step 5: Save to DB + redirect to monitoring
 
 ### Phase 4: Response Flow
