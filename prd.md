@@ -8,10 +8,10 @@ Remove Reddit OAuth, switch to email/password auth, use sequential ID-based Redd
 ## 1. Auth: Reddit OAuth → Email/Password
 
 **Remove:**
-- [ ] Reddit social provider from `lib/auth/index.ts`
-- [ ] `REDDIT_CLIENT_ID`, `REDDIT_CLIENT_SECRET` env vars
-- [ ] Token refresh logic, token status endpoint
-- [ ] Re-auth UI in monitor page & response editor
+- [x] Reddit social provider from `lib/auth/index.ts`
+- [x] `REDDIT_CLIENT_ID`, `REDDIT_CLIENT_SECRET` env vars
+- [x] Token refresh logic, token status endpoint
+- [x] Re-auth UI in monitor page & response editor
 
 **Add:**
 - [x] Email/password credentials in better-auth config
@@ -19,7 +19,7 @@ Remove Reddit OAuth, switch to email/password auth, use sequential ID-based Redd
 - [x] No email verification - immediate access after signup
 
 **Files:**
-- [ ] `lib/auth/index.ts` - Remove reddit provider, add emailAndPassword plugin
+- [x] `lib/auth/index.ts` - Remove reddit provider, add emailAndPassword plugin
 - [x] `lib/auth/client.ts` - Update client for email/password methods
 - [x] `app/page.tsx` - Replace "Sign in with Reddit" with login form
 - [x] New: `app/(auth)/login/page.tsx`, `app/(auth)/signup/page.tsx`
@@ -29,7 +29,7 @@ Remove Reddit OAuth, switch to email/password auth, use sequential ID-based Redd
 ## 2. Reddit Fetching: Search API → Sequential ID Polling
 
 **Remove:**
-- [ ] `/api/threads/search` using `reddit.com/search.json`
+- [x] `/api/threads/search` using `reddit.com/search.json`
 
 **Add:**
 - [x] New fetching system based on base-36 ID polling
@@ -120,8 +120,8 @@ const openai = createOpenAI({
 - [x] 3. Test keyword matching with new fetch system
 - [x] 4. Remove post functionality from UI
 - [x] 5. Switch to Vercel AI Gateway
-- [ ] 6. Remove Reddit OAuth completely
-- [ ] 7. Update env vars, clean up dead code
+- [x] 6. Remove Reddit OAuth completely
+- [x] 7. Update env vars, clean up dead code
 
 ---
 

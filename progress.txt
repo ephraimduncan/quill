@@ -564,3 +564,18 @@
   - Verifies VERCEL_AI_GATEWAY_API_KEY usage
   - Verifies .env.example has correct variable and no old OPENAI_API_KEY
 - Total: 280 tests passing across 25 files
+
+### Completed: Remove Reddit OAuth completely (Migration Step 6 & 7)
+
+- Updated `lib/auth/index.ts`:
+  - Removed `refreshRedditToken` function
+  - Removed Reddit OAuth social provider config
+  - Removed `REDDIT_CLIENT_ID` and `REDDIT_CLIENT_SECRET` references
+  - Kept email/password auth as sole authentication method
+- Updated `.env.example`:
+  - Removed `REDDIT_CLIENT_ID` and `REDDIT_CLIENT_SECRET` variables
+  - Removed Reddit OAuth comment section
+- Updated test suite in `__tests__/email-password-auth.test.ts`:
+  - Changed "keeps Reddit social provider" test to verify Reddit OAuth is removed
+  - Added test to verify .env.example has no Reddit OAuth variables
+- Total: 281 tests passing across 25 files

@@ -10,11 +10,21 @@ describe("Email/Password Auth Config", () => {
     expect(content).toContain("enabled: true");
   });
 
-  test("auth config keeps Reddit social provider (migration phase)", () => {
+  test("auth config has no Reddit OAuth (removed)", () => {
     const authConfigPath = path.join(process.cwd(), "lib/auth/index.ts");
     const content = fs.readFileSync(authConfigPath, "utf-8");
-    expect(content).toContain("socialProviders");
-    expect(content).toContain("reddit:");
+    expect(content).not.toContain("socialProviders");
+    expect(content).not.toContain("reddit:");
+    expect(content).not.toContain("REDDIT_CLIENT_ID");
+    expect(content).not.toContain("REDDIT_CLIENT_SECRET");
+    expect(content).not.toContain("refreshRedditToken");
+  });
+
+  test("env.example has no Reddit OAuth variables", () => {
+    const envExamplePath = path.join(process.cwd(), ".env.example");
+    const content = fs.readFileSync(envExamplePath, "utf-8");
+    expect(content).not.toContain("REDDIT_CLIENT_ID");
+    expect(content).not.toContain("REDDIT_CLIENT_SECRET");
   });
 });
 
