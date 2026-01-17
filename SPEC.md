@@ -325,7 +325,7 @@ Mounted at `/api/*` via Next.js catch-all route.
 - [x] Monitoring view with tabs
 - [x] Thread dismiss/restore
 - [x] Post history tab
-- [ ] Manual refresh button
+- [x] Manual refresh button
 
 ### Phase 6: Automation
 - [ ] Vercel Cron job for daily discovery

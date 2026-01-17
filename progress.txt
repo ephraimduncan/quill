@@ -331,3 +331,30 @@
   - UI state changes for dismiss/restore (thread list movements, selection)
   - Thread count integration (active count, new badge count)
 - Total: 200 tests passing across 17 files
+
+### Completed: Manual refresh button
+
+- Created POST `/api/threads/refresh` endpoint in `app/api/[[...route]]/route.ts`:
+  - Validates authentication and request schema with Zod
+  - Validates product ownership and checks for keywords
+  - Searches Reddit for each keyword (reusing search logic pattern)
+  - Deduplicates against existing threads in database by redditThreadId
+  - Filters out threads older than 7 days
+  - Inserts new threads with `isNew=true`, `status='active'`
+  - Returns count of new threads found
+- Updated `app/(app)/monitor/[productId]/page.tsx` with:
+  - Added isRefreshing state for loading indicator
+  - Added handleRefreshThreads callback to call refresh API
+  - Added "Find new threads" button in CardHeader of Threads tab
+  - Button shows Spinner with "Searching..." text during refresh
+  - Toast notification shows count of new threads found (or "No new threads found")
+  - Re-fetches product data after successful refresh to update UI
+- Added test suite in `__tests__/refresh-threads.test.ts` (17 tests):
+  - Auth validation (401 for unauthenticated)
+  - Schema validation (missing/empty productId)
+  - Product ownership validation (404 for non-existent or other user's product)
+  - No keywords validation (400)
+  - Thread deduplication and age filtering
+  - New thread insertion with correct properties
+  - UI toast message formatting
+- Total: 217 tests passing across 18 files

@@ -2,12 +2,15 @@
 
 import { useState, useEffect, useCallback } from "react"
 import { useParams } from "next/navigation"
-import { ExternalLink, X, RotateCcw } from "lucide-react"
+import { ExternalLink, X, RotateCcw, RefreshCw } from "lucide-react"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Badge } from "@/components/ui/badge"
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs"
+import { Button } from "@/components/ui/button"
+import { Spinner } from "@/components/ui/spinner"
 import { ResponseEditorPanel } from "@/components/response-editor-panel"
+import { toast } from "sonner"
 
 type Thread = {
   id: string
@@ -63,6 +66,7 @@ export default function MonitorPage() {
   const [error, setError] = useState<string | null>(null)
   const [selectedThreadId, setSelectedThreadId] = useState<string | null>(null)
   const [activeTab, setActiveTab] = useState("threads")
+  const [isRefreshing, setIsRefreshing] = useState(false)
 
   useEffect(() => {
     async function fetchData() {
@@ -156,6 +160,37 @@ export default function MonitorPage() {
     }
   }, [])
 
+  const handleRefreshThreads = useCallback(async () => {
+    setIsRefreshing(true)
+    try {
+      const res = await fetch("/api/threads/refresh", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ productId }),
+      })
+
+      const data = await res.json()
+      if (res.ok) {
+        if (data.newThreadsCount > 0) {
+          toast.success(`Found ${data.newThreadsCount} new thread${data.newThreadsCount === 1 ? "" : "s"}`)
+          const productRes = await fetch(`/api/products/${productId}`)
+          if (productRes.ok) {
+            const productData = await productRes.json()
+            setProduct(productData)
+          }
+        } else {
+          toast.success("No new threads found")
+        }
+      } else {
+        toast.error(data.error || "Failed to refresh threads")
+      }
+    } catch {
+      toast.error("Failed to connect to server")
+    } finally {
+      setIsRefreshing(false)
+    }
+  }, [productId])
+
   if (isLoading) {
     return (
       <div className="max-w-5xl mx-auto py-8 px-4">
@@ -220,10 +255,32 @@ export default function MonitorPage() {
         <TabsContent value="threads">
           <Card>
             <CardHeader>
-              <CardTitle>Active Threads</CardTitle>
-              <CardDescription>
-                {activeThreads.length} active thread{activeThreads.length !== 1 ? "s" : ""}
-              </CardDescription>
+              <div className="flex items-start justify-between">
+                <div>
+                  <CardTitle>Active Threads</CardTitle>
+                  <CardDescription>
+                    {activeThreads.length} active thread{activeThreads.length !== 1 ? "s" : ""}
+                  </CardDescription>
+                </div>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handleRefreshThreads}
+                  disabled={isRefreshing}
+                >
+                  {isRefreshing ? (
+                    <>
+                      <Spinner size="sm" className="mr-2" />
+                      Searching...
+                    </>
+                  ) : (
+                    <>
+                      <RefreshCw className="size-4 mr-2" />
+                      Find new threads
+                    </>
+                  )}
+                </Button>
+              </div>
             </CardHeader>
             <CardContent>
               {activeThreads.length === 0 ? (

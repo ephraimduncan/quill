@@ -512,6 +512,123 @@ app.post("/threads/:id/restore", async (c) => {
   return c.json({ success: true });
 });
 
+const refreshThreadsSchema = z.object({
+  productId: z.string().min(1),
+});
+
+app.post("/threads/refresh", async (c) => {
+  const user = c.get("user");
+  if (!user) {
+    return c.json({ error: "Unauthorized" }, 401);
+  }
+
+  const body = await c.req.json();
+  const parsed = refreshThreadsSchema.safeParse(body);
+
+  if (!parsed.success) {
+    return c.json({ error: "Invalid request data" }, 400);
+  }
+
+  const { productId } = parsed.data;
+
+  const [product] = await db
+    .select()
+    .from(products)
+    .where(and(eq(products.id, productId), eq(products.userId, user.id)));
+
+  if (!product) {
+    return c.json({ error: "Product not found" }, 404);
+  }
+
+  const productKeywords = await db
+    .select()
+    .from(keywords)
+    .where(eq(keywords.productId, productId));
+
+  if (productKeywords.length === 0) {
+    return c.json({ error: "No keywords found for this product" }, 400);
+  }
+
+  const existingThreads = await db
+    .select({ redditThreadId: threads.redditThreadId })
+    .from(threads)
+    .where(eq(threads.productId, productId));
+
+  const existingIds = new Set(existingThreads.map((t) => t.redditThreadId));
+
+  const sevenDaysAgo = Math.floor(Date.now() / 1000) - 7 * 24 * 60 * 60;
+  const seenIds = new Set<string>();
+  const newThreads: Array<{
+    redditThreadId: string;
+    title: string;
+    bodyPreview: string;
+    subreddit: string;
+    url: string;
+    createdUtc: number;
+  }> = [];
+
+  for (const kw of productKeywords) {
+    try {
+      const searchUrl = new URL("https://www.reddit.com/search.json");
+      searchUrl.searchParams.set("q", kw.keyword);
+      searchUrl.searchParams.set("sort", "new");
+      searchUrl.searchParams.set("limit", "10");
+      searchUrl.searchParams.set("t", "week");
+      searchUrl.searchParams.set("type", "link");
+
+      const response = await fetch(searchUrl.toString(), {
+        headers: { "User-Agent": "RedditAgent/1.0" },
+      });
+
+      if (!response.ok) continue;
+
+      const data = await response.json();
+      const posts = data?.data?.children || [];
+
+      for (const post of posts) {
+        const thread = post.data as RedditThread;
+        if (seenIds.has(thread.id)) continue;
+        if (existingIds.has(thread.id)) continue;
+        if (thread.created_utc < sevenDaysAgo) continue;
+
+        seenIds.add(thread.id);
+        newThreads.push({
+          redditThreadId: thread.id,
+          title: thread.title,
+          bodyPreview: (thread.selftext || "").slice(0, 200),
+          subreddit: thread.subreddit,
+          url: `https://reddit.com${thread.permalink}`,
+          createdUtc: thread.created_utc,
+        });
+      }
+    } catch {
+      continue;
+    }
+  }
+
+  const now = Math.floor(Date.now() / 1000);
+
+  if (newThreads.length > 0) {
+    await db.insert(threads).values(
+      newThreads.map((thread) => ({
+        id: randomUUID(),
+        productId,
+        redditThreadId: thread.redditThreadId,
+        title: thread.title,
+        bodyPreview: thread.bodyPreview,
+        subreddit: thread.subreddit,
+        url: thread.url,
+        createdUtc: thread.createdUtc,
+        discoveredAt: now,
+        status: "active" as const,
+        isNew: true,
+      }))
+    );
+  }
+
+  return c.json({ newThreadsCount: newThreads.length });
+});
+
 const generateResponseSchema = z.object({
   thread: z.object({
     title: z.string().min(1),
