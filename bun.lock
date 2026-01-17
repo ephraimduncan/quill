@@ -9,6 +9,7 @@
         "@tabler/icons-react": "^3.36.1",
         "class-variance-authority": "^0.7.1",
         "clsx": "^2.1.1",
+        "hono": "^4.11.4",
         "next": "16.1.2",
         "react": "19.2.3",
         "react-dom": "19.2.3",

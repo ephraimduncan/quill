@@ -1,0 +1,10 @@
+## 2026-01-17
+
+### Completed: Setup Hono backend with catch-all route
+
+- Installed Hono v4.11.4
+- Created catch-all route at `app/api/[[...route]]/route.ts`
+- Route exports GET, POST, PUT, DELETE, PATCH handlers via `hono/vercel`
+- Added `/api/health` endpoint for testing
+- Added test suite in `__tests__/api.test.ts` (3 tests, all passing)
+- Added `test` script to package.json using Bun's built-in test runner
