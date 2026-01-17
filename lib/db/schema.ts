@@ -48,22 +48,6 @@ export const redditSyncState = sqliteTable("reddit_sync_state", {
   updatedAt: integer("updated_at").notNull(),
 });
 
-export const postHistory = sqliteTable("post_history", {
-  id: text("id").primaryKey(),
-  userId: text("user_id")
-    .notNull()
-    .references(() => user.id),
-  productId: text("product_id")
-    .notNull()
-    .references(() => products.id, { onDelete: "cascade" }),
-  threadId: text("thread_id")
-    .notNull()
-    .references(() => threads.id),
-  responseSnippet: text("response_snippet").notNull(),
-  redditCommentUrl: text("reddit_comment_url").notNull(),
-  postedAt: integer("posted_at").notNull(),
-});
-
 export type User = typeof user.$inferSelect;
 export type NewUser = typeof user.$inferInsert;
 export type Product = typeof products.$inferSelect;
@@ -72,7 +56,5 @@ export type Keyword = typeof keywords.$inferSelect;
 export type NewKeyword = typeof keywords.$inferInsert;
 export type Thread = typeof threads.$inferSelect;
 export type NewThread = typeof threads.$inferInsert;
-export type PostHistory = typeof postHistory.$inferSelect;
-export type NewPostHistory = typeof postHistory.$inferInsert;
 export type RedditSyncState = typeof redditSyncState.$inferSelect;
 export type NewRedditSyncState = typeof redditSyncState.$inferInsert;

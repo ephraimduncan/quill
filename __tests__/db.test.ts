@@ -107,17 +107,6 @@ beforeAll(async () => {
     )
   `);
 
-  await client.execute(`
-    CREATE TABLE post_history (
-      id TEXT PRIMARY KEY,
-      user_id TEXT NOT NULL REFERENCES user(id),
-      product_id TEXT NOT NULL REFERENCES products(id) ON DELETE CASCADE,
-      thread_id TEXT NOT NULL REFERENCES threads(id),
-      response_snippet TEXT NOT NULL,
-      reddit_comment_url TEXT NOT NULL,
-      posted_at INTEGER NOT NULL
-    )
-  `);
 });
 
 afterAll(() => {
@@ -306,64 +295,6 @@ describe("Database Schema", () => {
     expect(threads[0].title).toBe("Test Thread");
     expect(threads[0].status).toBe("active");
     expect(threads[0].isNew).toBe(true);
-  });
-
-  test("can insert and query post history", async () => {
-    const userId = crypto.randomUUID();
-    const productId = crypto.randomUUID();
-    const threadId = crypto.randomUUID();
-    const historyId = crypto.randomUUID();
-    const now = new Date();
-
-    await db.insert(schema.user).values({
-      id: userId,
-      name: "historyuser",
-      email: "history@example.com",
-      emailVerified: false,
-      createdAt: now,
-      updatedAt: now,
-    });
-
-    await db.insert(schema.products).values({
-      id: productId,
-      userId: userId,
-      url: "https://example.com",
-      name: "History Product",
-      description: "Description",
-      targetAudience: "Users",
-      createdAt: Date.now(),
-    });
-
-    await db.insert(schema.threads).values({
-      id: threadId,
-      productId: productId,
-      redditThreadId: "def456",
-      title: "History Thread",
-      bodyPreview: "Body preview...",
-      subreddit: "test",
-      url: "https://reddit.com/r/test/def456",
-      createdUtc: Date.now(),
-      discoveredAt: Date.now(),
-    });
-
-    await db.insert(schema.postHistory).values({
-      id: historyId,
-      userId: userId,
-      productId: productId,
-      threadId: threadId,
-      responseSnippet: "This is my response snippet...",
-      redditCommentUrl: "https://reddit.com/r/test/comments/def456/comment/xyz",
-      postedAt: Date.now(),
-    });
-
-    const history = await db
-      .select()
-      .from(schema.postHistory)
-      .where(eq(schema.postHistory.id, historyId));
-
-    expect(history).toHaveLength(1);
-    expect(history[0].responseSnippet).toBe("This is my response snippet...");
-    expect(history[0].userId).toBe(userId);
   });
 
   test("schema exports correct types", () => {

@@ -67,26 +67,26 @@ redditSyncState: { id, lastPostId, updatedAt }
 ## 3. Remove Reply/Post Functionality
 
 **Remove:**
-- [ ] `POST /api/response/post` endpoint
-- [ ] "Post to Reddit" button in UI
-- [ ] `postHistory` table
-- [ ] Token status checking UI
-- [ ] Re-auth prompts
+- [x] `POST /api/response/post` endpoint
+- [x] "Post to Reddit" button in UI
+- [x] `postHistory` table
+- [x] Token status checking UI
+- [x] Re-auth prompts
 
 **Keep:**
-- [ ] AI response generation (`/response/generate`)
-- [ ] Response editor panel (for viewing/copying)
-- [ ] All discovered threads (with matchedKeyword for filtering)
+- [x] AI response generation (`/response/generate`)
+- [x] Response editor panel (for viewing/copying)
+- [x] All discovered threads (with matchedKeyword for filtering)
 
 **UI Change:**
-- [ ] Response panel: Show AI response + "Copy" button + "Open in Reddit" link
-- [ ] User copies response, clicks link, pastes in Reddit manually
+- [x] Response panel: Show AI response + "Copy" button + "Open in Reddit" link
+- [x] User copies response, clicks link, pastes in Reddit manually
 
 **Files:**
-- [ ] `app/api/[[...route]]/route.ts` - Remove post endpoint, token-status endpoint
-- [ ] `components/response-editor-panel.tsx` - Remove post button, add copy + reddit link
-- [ ] `app/(app)/monitor/[productId]/page.tsx` - Remove post history tab, keep threads view
-- [ ] `lib/db/schema.ts` - Remove postHistory table
+- [x] `app/api/[[...route]]/route.ts` - Remove post endpoint, token-status endpoint
+- [x] `components/response-editor-panel.tsx` - Remove post button, add copy + reddit link
+- [x] `app/(app)/monitor/[productId]/page.tsx` - Remove post history tab, keep threads view
+- [x] `lib/db/schema.ts` - Remove postHistory table
 
 ---
 
@@ -118,7 +118,7 @@ const openai = createOpenAI({
 - [x] 1. Add email/password auth alongside Reddit (keep both temporarily)
 - [x] 2. Implement ID-based Reddit fetching
 - [x] 3. Test keyword matching with new fetch system
-- [ ] 4. Remove post functionality from UI
+- [x] 4. Remove post functionality from UI
 - [ ] 5. Switch to Vercel AI Gateway
 - [ ] 6. Remove Reddit OAuth completely
 - [ ] 7. Update env vars, clean up dead code

@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback } from "react"
 import { useParams } from "next/navigation"
 import Link from "next/link"
-import { ExternalLink, X, RotateCcw, RefreshCw, AlertCircle, Pencil } from "lucide-react"
+import { ExternalLink, X, RotateCcw, RefreshCw, Pencil } from "lucide-react"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Badge } from "@/components/ui/badge"
@@ -12,7 +12,6 @@ import { Button } from "@/components/ui/button"
 import { Spinner } from "@/components/ui/spinner"
 import { ResponseEditorPanel } from "@/components/response-editor-panel"
 import { toast } from "sonner"
-import { signIn } from "@/lib/auth/client"
 
 type Thread = {
   id: string
@@ -36,17 +35,6 @@ type Product = {
   threads: Thread[]
 }
 
-type HistoryItem = {
-  id: string
-  threadId: string
-  responseSnippet: string
-  redditCommentUrl: string
-  postedAt: number
-  threadTitle: string
-  threadSubreddit: string
-  threadUrl: string
-}
-
 function formatRelativeTime(timestamp: number) {
   const seconds = Math.floor(Date.now() / 1000 - timestamp)
   if (seconds < 60) return "just now"
@@ -63,22 +51,16 @@ export default function MonitorPage() {
   const productId = params.productId as string
 
   const [product, setProduct] = useState<Product | null>(null)
-  const [history, setHistory] = useState<HistoryItem[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [selectedThreadId, setSelectedThreadId] = useState<string | null>(null)
   const [activeTab, setActiveTab] = useState("threads")
   const [isRefreshing, setIsRefreshing] = useState(false)
-  const [tokenExpired, setTokenExpired] = useState(false)
 
   useEffect(() => {
     async function fetchData() {
       try {
-        const [productRes, historyRes, tokenRes] = await Promise.all([
-          fetch(`/api/products/${productId}`),
-          fetch(`/api/history/${productId}`),
-          fetch("/api/auth/token-status"),
-        ])
+        const productRes = await fetch(`/api/products/${productId}`)
 
         const productData = await productRes.json()
         if (!productRes.ok) {
@@ -92,16 +74,6 @@ export default function MonitorPage() {
         )
         if (activeThreads.length > 0) {
           setSelectedThreadId(activeThreads[0].id)
-        }
-
-        if (historyRes.ok) {
-          const historyData = await historyRes.json()
-          setHistory(historyData)
-        }
-
-        if (tokenRes.ok) {
-          const tokenData = await tokenRes.json()
-          setTokenExpired(tokenData.needsReauth === true)
         }
       } catch {
         setError("Failed to connect to server")
@@ -200,10 +172,6 @@ export default function MonitorPage() {
     }
   }, [productId])
 
-  const handleReauth = async () => {
-    await signIn.social({ provider: "reddit", callbackURL: window.location.href })
-  }
-
   if (isLoading) {
     return (
       <div className="max-w-5xl mx-auto py-8 px-4">
@@ -259,18 +227,6 @@ export default function MonitorPage() {
         <p className="text-muted-foreground">{product.description}</p>
       </div>
 
-      {tokenExpired && (
-        <div className="flex items-center gap-3 p-4 mb-6 bg-amber-50 border border-amber-200 rounded-md">
-          <AlertCircle className="size-5 text-amber-600 shrink-0" />
-          <div className="flex-1 text-sm text-amber-800">
-            Your Reddit session has expired. You can browse threads, but you&apos;ll need to sign in again to post.
-          </div>
-          <Button size="sm" variant="outline" onClick={handleReauth}>
-            Sign in with Reddit
-          </Button>
-        </div>
-      )}
-
       <Tabs value={activeTab} onValueChange={setActiveTab}>
         <TabsList>
           <TabsTrigger value="threads">
@@ -281,7 +237,6 @@ export default function MonitorPage() {
               </Badge>
             )}
           </TabsTrigger>
-          <TabsTrigger value="history">History</TabsTrigger>
           <TabsTrigger value="dismissed">Dismissed</TabsTrigger>
         </TabsList>
 
@@ -393,19 +348,15 @@ export default function MonitorPage() {
                           <ResponseEditorPanel
                             key={selectedThread.id}
                             thread={{
-                              id: selectedThread.id,
-                              redditThreadId: selectedThread.redditThreadId,
                               title: selectedThread.title,
                               bodyPreview: selectedThread.bodyPreview,
                               subreddit: selectedThread.subreddit,
                             }}
                             product={{
-                              id: product.id,
                               name: product.name,
                               description: product.description,
                               targetAudience: product.targetAudience,
                             }}
-                            tokenExpired={tokenExpired}
                           />
                         </div>
                       </div>
@@ -415,56 +366,6 @@ export default function MonitorPage() {
                       </div>
                     )}
                   </div>
-                </div>
-              )}
-            </CardContent>
-          </Card>
-        </TabsContent>
-
-        <TabsContent value="history">
-          <Card>
-            <CardHeader>
-              <CardTitle>Post History</CardTitle>
-              <CardDescription>
-                {history.length} post{history.length !== 1 ? "s" : ""} made
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              {history.length === 0 ? (
-                <p className="text-center text-muted-foreground py-8">
-                  No posts yet. Generate and post a response to see it here.
-                </p>
-              ) : (
-                <div className="space-y-4">
-                  {history.map((item) => (
-                    <div
-                      key={item.id}
-                      className="border rounded-md p-4"
-                    >
-                      <div className="flex items-start justify-between gap-4">
-                        <div className="flex-1 min-w-0">
-                          <h4 className="font-medium text-sm line-clamp-1">
-                            {item.threadTitle}
-                          </h4>
-                          <p className="text-xs text-muted-foreground mt-1">
-                            r/{item.threadSubreddit} · {formatRelativeTime(item.postedAt)}
-                          </p>
-                          <p className="text-sm text-muted-foreground mt-2 line-clamp-2">
-                            {item.responseSnippet}...
-                          </p>
-                        </div>
-                        <a
-                          href={item.redditCommentUrl || item.threadUrl}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="inline-flex items-center gap-1 text-sm text-primary hover:underline shrink-0"
-                        >
-                          View
-                          <ExternalLink className="size-3" />
-                        </a>
-                      </div>
-                    </div>
-                  ))}
                 </div>
               )}
             </CardContent>

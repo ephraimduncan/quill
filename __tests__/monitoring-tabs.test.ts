@@ -32,16 +32,6 @@ type Thread = {
   isNew: boolean;
 };
 
-type PostHistoryItem = {
-  id: string;
-  userId: string;
-  productId: string;
-  threadId: string;
-  responseSnippet: string;
-  redditCommentUrl: string;
-  postedAt: number;
-};
-
 const mockProducts: Product[] = [
   {
     id: "prod-1",
@@ -105,18 +95,6 @@ const mockThreads: Thread[] = [
   },
 ];
 
-const mockPostHistory: PostHistoryItem[] = [
-  {
-    id: "hist-1",
-    userId: "user-1",
-    productId: "prod-1",
-    threadId: "thread-3",
-    responseSnippet: "TaskFlow is great for this use case because...",
-    redditCommentUrl: "https://reddit.com/r/apps/comments/ghi789/comment/123",
-    postedAt: 1704155000,
-  },
-];
-
 let mutableThreads = [...mockThreads];
 
 function createTestApp(authenticated = true) {
@@ -133,40 +111,6 @@ function createTestApp(authenticated = true) {
       c.set("session", null);
     }
     return next();
-  });
-
-  app.get("/history/:productId", async (c) => {
-    const user = c.get("user");
-    if (!user) {
-      return c.json({ error: "Unauthorized" }, 401);
-    }
-
-    const productId = c.req.param("productId");
-    const product = mockProducts.find(
-      (p) => p.id === productId && p.userId === user.id
-    );
-
-    if (!product) {
-      return c.json({ error: "Product not found" }, 404);
-    }
-
-    const history = mockPostHistory
-      .filter((h) => h.productId === productId)
-      .map((h) => {
-        const thread = mutableThreads.find((t) => t.id === h.threadId);
-        return {
-          id: h.id,
-          threadId: h.threadId,
-          responseSnippet: h.responseSnippet,
-          redditCommentUrl: h.redditCommentUrl,
-          postedAt: h.postedAt,
-          threadTitle: thread?.title || "",
-          threadSubreddit: thread?.subreddit || "",
-          threadUrl: thread?.url || "",
-        };
-      });
-
-    return c.json(history);
   });
 
   app.post("/threads/:id/mark-read", async (c) => {
@@ -198,78 +142,6 @@ function createTestApp(authenticated = true) {
 
   return app;
 }
-
-describe("GET /api/history/:productId", () => {
-  test("returns 401 when not authenticated", async () => {
-    const app = createTestApp(false);
-    const res = await app.request("/api/history/prod-1");
-
-    expect(res.status).toBe(401);
-    const json = await res.json();
-    expect(json.error).toBe("Unauthorized");
-  });
-
-  test("returns 404 for non-existent product", async () => {
-    const app = createTestApp();
-    const res = await app.request("/api/history/non-existent");
-
-    expect(res.status).toBe(404);
-    const json = await res.json();
-    expect(json.error).toBe("Product not found");
-  });
-
-  test("returns 404 for product owned by different user", async () => {
-    const app = createTestApp();
-    const res = await app.request("/api/history/prod-2");
-
-    expect(res.status).toBe(404);
-    const json = await res.json();
-    expect(json.error).toBe("Product not found");
-  });
-
-  test("returns post history with thread details", async () => {
-    const app = createTestApp();
-    const res = await app.request("/api/history/prod-1");
-
-    expect(res.status).toBe(200);
-    const json = await res.json();
-
-    expect(Array.isArray(json)).toBe(true);
-    expect(json.length).toBe(1);
-  });
-
-  test("history item includes all required fields", async () => {
-    const app = createTestApp();
-    const res = await app.request("/api/history/prod-1");
-
-    expect(res.status).toBe(200);
-    const json = await res.json();
-    const item = json[0];
-
-    expect(item).toHaveProperty("id");
-    expect(item).toHaveProperty("threadId");
-    expect(item).toHaveProperty("responseSnippet");
-    expect(item).toHaveProperty("redditCommentUrl");
-    expect(item).toHaveProperty("postedAt");
-    expect(item).toHaveProperty("threadTitle");
-    expect(item).toHaveProperty("threadSubreddit");
-    expect(item).toHaveProperty("threadUrl");
-  });
-
-  test("history item has correct thread details", async () => {
-    const app = createTestApp();
-    const res = await app.request("/api/history/prod-1");
-
-    expect(res.status).toBe(200);
-    const json = await res.json();
-    const item = json[0];
-
-    expect(item.threadTitle).toBe("Task app suggestions");
-    expect(item.threadSubreddit).toBe("apps");
-    expect(item.threadUrl).toBe("https://reddit.com/r/apps/ghi789");
-    expect(item.responseSnippet).toBe("TaskFlow is great for this use case because...");
-  });
-});
 
 describe("POST /api/threads/:id/mark-read", () => {
   test("returns 401 when not authenticated", async () => {
@@ -375,43 +247,18 @@ describe("Monitoring page tab navigation", () => {
   });
 
   test("tab values are valid", () => {
-    const validTabs = ["threads", "history", "dismissed"];
+    const validTabs = ["threads", "dismissed"];
     expect(validTabs).toContain("threads");
-    expect(validTabs).toContain("history");
     expect(validTabs).toContain("dismissed");
   });
 
   test("each tab has distinct content", () => {
     const tabContent = {
       threads: "Active Threads",
-      history: "Post History",
       dismissed: "Dismissed Threads",
     };
 
-    expect(Object.keys(tabContent).length).toBe(3);
-    expect(new Set(Object.values(tabContent)).size).toBe(3);
-  });
-});
-
-describe("History tab rendering", () => {
-  test("empty history shows correct message", () => {
-    const emptyMessage = "No posts yet. Generate and post a response to see it here.";
-    expect(emptyMessage).toContain("No posts yet");
-  });
-
-  test("history count pluralization", () => {
-    const count = 1;
-    const text = `${count} post${count !== 1 ? "s" : ""} made`;
-    expect(text).toBe("1 post made");
-
-    const count2 = 3;
-    const text2 = `${count2} post${count2 !== 1 ? "s" : ""} made`;
-    expect(text2).toBe("3 posts made");
-  });
-
-  test("history item uses comment URL when available", () => {
-    const item = mockPostHistory[0];
-    const url = item.redditCommentUrl || mockThreads.find((t) => t.id === item.threadId)?.url;
-    expect(url).toBe("https://reddit.com/r/apps/comments/ghi789/comment/123");
+    expect(Object.keys(tabContent).length).toBe(2);
+    expect(new Set(Object.values(tabContent)).size).toBe(2);
   });
 });

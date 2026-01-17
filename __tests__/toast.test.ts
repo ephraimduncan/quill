@@ -33,23 +33,11 @@ describe("Toast in response editor panel", () => {
     expect(panelContent).toContain('import { toast } from "sonner"');
   });
 
-  test("toast.success is called on successful post", () => {
+  test("toast.success is called when response is copied", () => {
     const panelPath = join(process.cwd(), "components/response-editor-panel.tsx");
     const panelContent = readFileSync(panelPath, "utf-8");
 
-    expect(panelContent).toContain('toast.success("Posted to Reddit successfully!")');
-  });
-
-  test("toast.success is called after setIsPosted(true)", () => {
-    const panelPath = join(process.cwd(), "components/response-editor-panel.tsx");
-    const panelContent = readFileSync(panelPath, "utf-8");
-
-    const setIsPostedIndex = panelContent.indexOf("setIsPosted(true)");
-    const toastIndex = panelContent.indexOf('toast.success("Posted to Reddit successfully!")');
-
-    expect(setIsPostedIndex).toBeGreaterThan(-1);
-    expect(toastIndex).toBeGreaterThan(-1);
-    expect(toastIndex).toBeGreaterThan(setIsPostedIndex);
+    expect(panelContent).toContain('toast.success("Response copied to clipboard")');
   });
 });
 

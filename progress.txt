@@ -524,3 +524,27 @@
   - Added `matched_keyword` column to test schema
   - Added `reddit_sync_state` table creation
 - Total: 320 tests passing across 24 files
+
+### Completed: Remove post functionality from UI (Migration Step 4)
+
+- Removed `postHistory` table from `lib/db/schema.ts`
+- Removed `POST /api/response/post` endpoint from `app/api/[[...route]]/route.ts`
+- Removed `GET /api/auth/token-status` endpoint
+- Removed `GET /api/history/:productId` endpoint
+- Updated `components/response-editor-panel.tsx`:
+  - Removed Post to Reddit button and posting logic
+  - Removed token-expired prop and re-auth banner
+  - Added Copy button to copy response to clipboard
+  - Added toast notification on copy success
+- Updated `app/(app)/monitor/[productId]/page.tsx`:
+  - Removed History tab from tabs list
+  - Removed token status fetching and tokenExpired state
+  - Removed re-auth banner at top of page
+  - Simplified to two tabs: Threads and Dismissed
+- Updated test files:
+  - Replaced `__tests__/post.test.ts` with placeholder (feature removed)
+  - Replaced `__tests__/token-refresh.test.ts` with placeholder (feature removed)
+  - Updated `__tests__/toast.test.ts` for copy button toast
+  - Updated `__tests__/monitoring-tabs.test.ts` to remove history tab tests
+  - Updated `__tests__/db.test.ts` to remove postHistory table test
+- Total: 272 tests passing across 24 files

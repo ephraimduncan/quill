@@ -8,7 +8,7 @@ import { generateObject, generateText } from "ai";
 import { openai } from "@ai-sdk/openai";
 import { z } from "zod";
 import { auth } from "@/lib/auth";
-import { db, products, threads, keywords, account, postHistory, redditSyncState } from "@/lib/db";
+import { db, products, threads, keywords, redditSyncState } from "@/lib/db";
 import { fetchLatestPostId, batchFetchPosts, generateIdRange, base36ToNumber } from "@/lib/reddit/id-fetcher";
 import { buildMatcher, type KeywordEntry } from "@/lib/reddit/keyword-matcher";
 
@@ -114,42 +114,6 @@ app.get("/products/:id", async (c) => {
     keywords: productKeywords.map((k) => k.keyword),
     threads: productThreads,
   });
-});
-
-app.get("/history/:productId", async (c) => {
-  const user = c.get("user");
-  if (!user) {
-    return c.json({ error: "Unauthorized" }, 401);
-  }
-
-  const productId = c.req.param("productId");
-
-  const [product] = await db
-    .select()
-    .from(products)
-    .where(and(eq(products.id, productId), eq(products.userId, user.id)));
-
-  if (!product) {
-    return c.json({ error: "Product not found" }, 404);
-  }
-
-  const history = await db
-    .select({
-      id: postHistory.id,
-      threadId: postHistory.threadId,
-      responseSnippet: postHistory.responseSnippet,
-      redditCommentUrl: postHistory.redditCommentUrl,
-      postedAt: postHistory.postedAt,
-      threadTitle: threads.title,
-      threadSubreddit: threads.subreddit,
-      threadUrl: threads.url,
-    })
-    .from(postHistory)
-    .innerJoin(threads, eq(postHistory.threadId, threads.id))
-    .where(eq(postHistory.productId, productId))
-    .orderBy(postHistory.postedAt);
-
-  return c.json(history);
 });
 
 app.post("/products", async (c) => {
@@ -758,13 +722,6 @@ Write only the response text, nothing else.`;
   }
 });
 
-const postResponseSchema = z.object({
-  threadId: z.string().min(1),
-  redditThreadId: z.string().min(1),
-  productId: z.string().min(1),
-  response: z.string().min(1),
-});
-
 app.get("/cron/discover", async (c) => {
   const authHeader = c.req.header("authorization");
   if (!process.env.CRON_SECRET || authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
@@ -898,152 +855,6 @@ app.get("/cron/discover", async (c) => {
     postsProcessed: posts.length,
     newThreadsFound: totalNewThreads,
   });
-});
-
-const ONE_HOUR_MS = 60 * 60 * 1000;
-
-app.get("/auth/token-status", async (c) => {
-  const user = c.get("user");
-  if (!user) {
-    return c.json({ error: "Unauthorized" }, 401);
-  }
-
-  const [userAccount] = await db
-    .select()
-    .from(account)
-    .where(and(eq(account.userId, user.id), eq(account.providerId, "reddit")));
-
-  if (!userAccount) {
-    return c.json({ connected: false, valid: false, needsReauth: true });
-  }
-
-  if (!userAccount.accessToken) {
-    return c.json({ connected: true, valid: false, needsReauth: true });
-  }
-
-  const expiresAt = userAccount.accessTokenExpiresAt;
-  if (!expiresAt) {
-    return c.json({ connected: true, valid: true, needsReauth: false });
-  }
-
-  const now = Date.now();
-  const expiresAtMs = expiresAt.getTime();
-  const hasRefreshToken = !!userAccount.refreshToken;
-
-  if (expiresAtMs <= now) {
-    return c.json({
-      connected: true,
-      valid: false,
-      needsReauth: !hasRefreshToken,
-      canRefresh: hasRefreshToken,
-    });
-  }
-
-  const needsProactiveRefresh = expiresAtMs - now <= ONE_HOUR_MS;
-
-  return c.json({
-    connected: true,
-    valid: true,
-    needsReauth: false,
-    needsProactiveRefresh: needsProactiveRefresh && hasRefreshToken,
-  });
-});
-
-app.post("/response/post", async (c) => {
-  const user = c.get("user");
-  if (!user) {
-    return c.json({ error: "Unauthorized" }, 401);
-  }
-
-  const body = await c.req.json();
-  const parsed = postResponseSchema.safeParse(body);
-
-  if (!parsed.success) {
-    return c.json({ error: "Invalid request data" }, 400);
-  }
-
-  const { threadId, redditThreadId, productId, response } = parsed.data;
-
-  let accessToken: string | null = null;
-
-  try {
-    const tokenResult = await auth.api.getAccessToken({
-      body: { providerId: "reddit", userId: user.id },
-    });
-    accessToken = tokenResult?.accessToken ?? null;
-  } catch {
-    accessToken = null;
-  }
-
-  if (!accessToken) {
-    const [userAccount] = await db
-      .select()
-      .from(account)
-      .where(and(eq(account.userId, user.id), eq(account.providerId, "reddit")));
-
-    if (!userAccount?.refreshToken) {
-      return c.json(
-        { error: "Reddit session expired. Please sign in again.", needsReauth: true },
-        401
-      );
-    }
-
-    return c.json(
-      { error: "Failed to refresh Reddit token. Please sign in again.", needsReauth: true },
-      401
-    );
-  }
-
-  const formData = new URLSearchParams();
-  formData.append("api_type", "json");
-  formData.append("thing_id", `t3_${redditThreadId}`);
-  formData.append("text", response);
-
-  try {
-    const redditResponse = await fetch(
-      "https://oauth.reddit.com/api/comment",
-      {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${accessToken}`,
-          "Content-Type": "application/x-www-form-urlencoded",
-          "User-Agent": "RedditAgent/1.0",
-        },
-        body: formData.toString(),
-      }
-    );
-
-    const data = await redditResponse.json();
-
-    if (data.json?.errors?.length > 0) {
-      const [errorCode, errorMessage] = data.json.errors[0];
-      return c.json({ error: errorMessage || errorCode }, 400);
-    }
-
-    const commentData = data.json?.data?.things?.[0]?.data;
-    const commentUrl = commentData?.permalink
-      ? `https://reddit.com${commentData.permalink}`
-      : null;
-
-    await db.insert(postHistory).values({
-      id: randomUUID(),
-      userId: user.id,
-      productId,
-      threadId,
-      responseSnippet: response.slice(0, 100),
-      redditCommentUrl: commentUrl || "",
-      postedAt: Math.floor(Date.now() / 1000),
-    });
-
-    return c.json({ success: true, commentUrl });
-  } catch (err) {
-    return c.json(
-      {
-        error: `Failed to post to Reddit: ${err instanceof Error ? err.message : "Unknown error"}`,
-      },
-      500
-    );
-  }
 });
 
 export const GET = handle(app);
