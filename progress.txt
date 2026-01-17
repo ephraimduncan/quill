@@ -624,3 +624,28 @@
   - API /api/products/:id returns threads array
   - Monitor page fetches and displays threads with selection
 - Total: 344 tests passing across 27 files
+
+### Completed: Keyword Matching Verification (Verification Step 3)
+
+- Created `__tests__/keyword-matching-verification.test.ts` with 36 tests:
+  - Add keyword via product creation (5 tests)
+  - Add keyword via product update (2 tests)
+  - Poll triggers keyword matching (4 tests)
+  - Aho-Corasick implementation (4 tests)
+  - Matching threads are discovered and stored (5 tests)
+  - Discovery response confirms matches (3 tests)
+  - Monitor page displays matched threads (3 tests)
+  - Keyword generation via AI (4 tests)
+  - Manual keyword entry (3 tests)
+  - End-to-end flow integrity (3 tests)
+- Tests verify:
+  - POST /api/products accepts and stores keywords array
+  - PUT /api/products/:id replaces keywords correctly
+  - Cron endpoint loads all keywords and builds Aho-Corasick matcher
+  - Keywords are matched against post title + body
+  - Matched threads stored with matchedKeyword field
+  - Multiple products can match same post independently
+  - Duplicate thread-product combinations prevented
+  - Setup wizard allows adding/removing keywords
+  - Keyword generation uses AI with product context
+- Total: 380 tests passing across 28 files
