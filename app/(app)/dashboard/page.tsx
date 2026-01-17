@@ -1,8 +1,109 @@
+"use client";
+
+import { useEffect, useState } from "react";
+import Link from "next/link";
+import { Plus } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { ProductCard } from "@/components/product-card";
+
+interface Product {
+  id: string;
+  name: string;
+  url: string;
+  createdAt: number;
+  newThreadCount: number;
+}
+
 export default function DashboardPage() {
+  const [products, setProducts] = useState<Product[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    async function fetchProducts() {
+      try {
+        const res = await fetch("/api/products");
+        if (!res.ok) {
+          if (res.status === 401) {
+            setError("Please sign in to view your products");
+            return;
+          }
+          throw new Error("Failed to fetch products");
+        }
+        const data = await res.json();
+        setProducts(data);
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "An error occurred");
+      } finally {
+        setLoading(false);
+      }
+    }
+    fetchProducts();
+  }, []);
+
+  if (loading) {
+    return (
+      <div>
+        <div className="flex items-center justify-between mb-6">
+          <h1 className="text-2xl font-bold">Products</h1>
+        </div>
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          {[1, 2, 3].map((i) => (
+            <div
+              key={i}
+              className="h-20 bg-muted animate-pulse rounded-xl"
+            />
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div>
+        <h1 className="text-2xl font-bold mb-6">Products</h1>
+        <p className="text-destructive">{error}</p>
+      </div>
+    );
+  }
+
   return (
     <div>
-      <h1 className="text-2xl font-bold mb-6">Products</h1>
-      <p className="text-muted-foreground">Your products will appear here.</p>
+      <div className="flex items-center justify-between mb-6">
+        <h1 className="text-2xl font-bold">Products</h1>
+        <Button asChild>
+          <Link href="/setup">
+            <Plus data-icon="inline-start" />
+            Add Product
+          </Link>
+        </Button>
+      </div>
+
+      {products.length === 0 ? (
+        <div className="text-center py-12">
+          <p className="text-muted-foreground mb-4">
+            You haven&apos;t added any products yet.
+          </p>
+          <Button asChild>
+            <Link href="/setup">
+              <Plus data-icon="inline-start" />
+              Add Your First Product
+            </Link>
+          </Button>
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          {products.map((product) => (
+            <ProductCard
+              key={product.id}
+              id={product.id}
+              name={product.name}
+              newThreadCount={product.newThreadCount}
+            />
+          ))}
+        </div>
+      )}
     </div>
-  )
+  );
 }

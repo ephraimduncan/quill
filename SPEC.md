@@ -305,7 +305,7 @@ Mounted at `/api/*` via Next.js catch-all route.
 
 ### Phase 2: Core UI
 - [x] Build app shell (header, sidebar, mobile hamburger)
-- [ ] Build dashboard with product cards
+- [x] Build dashboard with product cards
 - [ ] Build skeleton loading states
 
 ### Phase 3: Product Setup Wizard

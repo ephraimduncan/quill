@@ -52,3 +52,22 @@
 - Updated root layout metadata (title: "Reddit Agent")
 - Added test suite in `__tests__/app-shell.test.ts` (8 tests)
 - Total: 24 tests passing across 4 files
+
+### Completed: Build dashboard with product cards
+
+- Updated `app/api/[[...route]]/route.ts` with:
+  - Session middleware to get authenticated user via better-auth
+  - GET `/api/products` endpoint returning user's products with new thread counts
+  - Uses Drizzle left join with count aggregation for thread badge counts
+- Created `components/product-card.tsx` with:
+  - Card linking to `/monitor/[id]` with product name and new thread badge
+  - Hover state for interactive feedback
+- Updated `app/(app)/dashboard/page.tsx` with:
+  - Fetches products from `/api/products` on mount
+  - Displays products in responsive grid (1/2/3 columns)
+  - Shows loading skeleton while fetching
+  - Shows empty state with "Add Product" CTA when no products
+  - "Add Product" button linking to `/setup`
+- Installed lucide-react v0.562.0 for icons
+- Added test suite in `__tests__/dashboard.test.ts` (6 tests)
+- Total: 30 tests passing across 5 files
