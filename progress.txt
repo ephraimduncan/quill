@@ -82,3 +82,24 @@
 - Updated `components/user-menu.tsx` to use Skeleton component for avatar loading
 - Added test suite in `__tests__/skeleton.test.ts` (6 tests)
 - Total: 36 tests passing across 6 files
+
+### Completed: Step 1: URL input + extraction API
+
+- Installed ai v6.0.39, @ai-sdk/openai v3.0.12, zod v4.3.5, jsdom v27.4.0, @mozilla/readability v0.6.0
+- Created POST `/api/extract` endpoint in `app/api/[[...route]]/route.ts`:
+  - Validates URL input and authentication
+  - Fetches HTML from URL with custom User-Agent
+  - Parses HTML with jsdom + Readability for content extraction
+  - Uses Vercel AI SDK `generateObject` with GPT-4o-mini to extract product info
+  - Returns: name, description, targetAudience, url
+- Created setup wizard page at `app/(app)/setup/page.tsx`:
+  - 5-step wizard with dot indicator (non-clickable)
+  - Step 1: URL input form with validation
+  - Loading state with Spinner during extraction
+  - Error display for failed extractions
+  - Navigates to Step 2 on successful extraction
+  - Wizard state managed in React (persists to DB only on completion)
+- Updated `.env.example` with OPENAI_API_KEY
+- Added test suite in `__tests__/extract.test.ts` (7 tests)
+- Added test suite in `__tests__/setup.test.ts` (6 tests)
+- Total: 49 tests passing across 8 files
