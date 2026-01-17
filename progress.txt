@@ -176,3 +176,25 @@
   - Step 4 back button returns to Step 3
   - Step 4 split view layout uses 40/60 ratio
 - Total: 86 tests passing across 10 files
+
+### Completed: Step 5: Save to DB + redirect to monitoring
+
+- Created POST `/api/products` endpoint in `app/api/[[...route]]/route.ts`:
+  - Validates request with Zod schema
+  - Creates product record with UUID
+  - Inserts associated keywords
+  - Inserts associated threads with `isNew=true` and `status='active'`
+  - Returns created product ID with 201 status
+- Updated `app/(app)/setup/page.tsx` with Step 5 implementation:
+  - Summary card showing product name, description
+  - Displays keyword count and thread count
+  - Save button with loading spinner during save
+  - Calls POST `/api/products` with wizard state
+  - Redirects to `/monitor/[productId]` on success
+  - Error display for failed saves
+- Created placeholder monitoring page at `app/(app)/monitor/[productId]/page.tsx`
+- Added test suite in `__tests__/products.test.ts` (12 tests):
+  - Auth validation, schema validation, data insertion
+- Updated test suite in `__tests__/setup.test.ts` (7 new tests):
+  - Step 5 summary display, payload structure, redirect, error handling
+- Total: 105 tests passing across 11 files

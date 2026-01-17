@@ -1,3 +1,4 @@
+import { randomUUID } from "crypto";
 import { Hono } from "hono";
 import { handle } from "hono/vercel";
 import { eq, count, and } from "drizzle-orm";
@@ -7,7 +8,7 @@ import { generateObject } from "ai";
 import { openai } from "@ai-sdk/openai";
 import { z } from "zod";
 import { auth } from "@/lib/auth";
-import { db, products, threads } from "@/lib/db";
+import { db, products, threads, keywords } from "@/lib/db";
 
 type Variables = {
   user: typeof auth.$Infer.Session.user | null;
@@ -59,6 +60,82 @@ app.get("/products", async (c) => {
     .groupBy(products.id);
 
   return c.json(userProducts);
+});
+
+const createProductSchema = z.object({
+  url: z.string().url(),
+  name: z.string().min(1),
+  description: z.string(),
+  targetAudience: z.string(),
+  keywords: z.array(z.string().min(1)),
+  threads: z.array(
+    z.object({
+      redditThreadId: z.string(),
+      title: z.string(),
+      bodyPreview: z.string(),
+      subreddit: z.string(),
+      url: z.string(),
+      createdUtc: z.number(),
+    })
+  ),
+});
+
+app.post("/products", async (c) => {
+  const user = c.get("user");
+  if (!user) {
+    return c.json({ error: "Unauthorized" }, 401);
+  }
+
+  const body = await c.req.json();
+  const parsed = createProductSchema.safeParse(body);
+
+  if (!parsed.success) {
+    return c.json({ error: "Invalid request data" }, 400);
+  }
+
+  const data = parsed.data;
+  const productId = randomUUID();
+  const now = Math.floor(Date.now() / 1000);
+
+  await db.insert(products).values({
+    id: productId,
+    userId: user.id,
+    url: data.url,
+    name: data.name,
+    description: data.description,
+    targetAudience: data.targetAudience,
+    createdAt: now,
+  });
+
+  if (data.keywords.length > 0) {
+    await db.insert(keywords).values(
+      data.keywords.map((keyword) => ({
+        id: randomUUID(),
+        productId,
+        keyword,
+      }))
+    );
+  }
+
+  if (data.threads.length > 0) {
+    await db.insert(threads).values(
+      data.threads.map((thread) => ({
+        id: randomUUID(),
+        productId,
+        redditThreadId: thread.redditThreadId,
+        title: thread.title,
+        bodyPreview: thread.bodyPreview,
+        subreddit: thread.subreddit,
+        url: thread.url,
+        createdUtc: thread.createdUtc,
+        discoveredAt: now,
+        status: "active" as const,
+        isNew: true,
+      }))
+    );
+  }
+
+  return c.json({ id: productId }, 201);
 });
 
 const productInfoSchema = z.object({

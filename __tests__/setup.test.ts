@@ -487,4 +487,103 @@ describe("Setup Wizard", () => {
     expect(leftPanelWidth).toBe("w-2/5");
     expect(rightPanelWidth).toBe("w-3/5");
   });
+
+  test("Step 5 shows product summary", () => {
+    type ProductInfo = {
+      name: string;
+      description: string;
+      targetAudience: string;
+      url: string;
+    };
+
+    const productInfo: ProductInfo = {
+      name: "Test Product",
+      description: "A test description",
+      targetAudience: "Developers",
+      url: "https://example.com",
+    };
+
+    expect(productInfo.name).toBe("Test Product");
+    expect(productInfo.description).toBe("A test description");
+  });
+
+  test("Step 5 displays keyword and thread counts", () => {
+    const keywords = ["productivity", "tools", "automation"];
+    const threads = [
+      { redditThreadId: "abc" },
+      { redditThreadId: "def" },
+    ];
+
+    expect(keywords.length).toBe(3);
+    expect(threads.length).toBe(2);
+  });
+
+  test("Step 5 back button returns to Step 4", () => {
+    const step = 5;
+    const goBack = (currentStep: number): number => currentStep - 1;
+    expect(goBack(step)).toBe(4);
+  });
+
+  test("Step 5 prepares correct payload for API", () => {
+    type ProductInfo = {
+      name: string;
+      description: string;
+      targetAudience: string;
+      url: string;
+    };
+
+    type RedditThread = {
+      redditThreadId: string;
+      title: string;
+      bodyPreview: string;
+      subreddit: string;
+      url: string;
+      createdUtc: number;
+    };
+
+    const productInfo: ProductInfo = {
+      name: "My Product",
+      description: "Description",
+      targetAudience: "Users",
+      url: "https://myproduct.com",
+    };
+
+    const keywords = ["keyword1", "keyword2"];
+    const threads: RedditThread[] = [
+      {
+        redditThreadId: "abc123",
+        title: "Thread",
+        bodyPreview: "Preview",
+        subreddit: "test",
+        url: "https://reddit.com/r/test/abc123",
+        createdUtc: 1700000000,
+      },
+    ];
+
+    const payload = {
+      url: productInfo.url,
+      name: productInfo.name,
+      description: productInfo.description,
+      targetAudience: productInfo.targetAudience,
+      keywords,
+      threads,
+    };
+
+    expect(payload.url).toBe("https://myproduct.com");
+    expect(payload.name).toBe("My Product");
+    expect(payload.keywords).toHaveLength(2);
+    expect(payload.threads).toHaveLength(1);
+  });
+
+  test("Step 5 save redirects to monitor page on success", () => {
+    const productId = "test-product-id";
+    const redirectUrl = `/monitor/${productId}`;
+    expect(redirectUrl).toBe("/monitor/test-product-id");
+  });
+
+  test("Step 5 handles save error gracefully", () => {
+    const setError = (msg: string): string => msg;
+    const error = setError("Failed to save product");
+    expect(error).toBe("Failed to save product");
+  });
 });

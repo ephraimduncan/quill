@@ -67,6 +67,7 @@ export default function SetupPage() {
   const [error, setError] = useState<string | null>(null)
   const [isGeneratingKeywords, setIsGeneratingKeywords] = useState(false)
   const [isSearchingThreads, setIsSearchingThreads] = useState(false)
+  const [isSaving, setIsSaving] = useState(false)
   const [newKeyword, setNewKeyword] = useState("")
   const [selectedThreadId, setSelectedThreadId] = useState<string | null>(null)
 
@@ -213,6 +214,40 @@ export default function SetupPage() {
 
   const handleThreadsSubmit = () => {
     setState((prev) => ({ ...prev, step: 5 }))
+  }
+
+  const handleSave = async () => {
+    if (!state.productInfo) return
+    setIsSaving(true)
+    setError(null)
+
+    try {
+      const response = await fetch("/api/products", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          url: state.productInfo.url,
+          name: state.productInfo.name,
+          description: state.productInfo.description,
+          targetAudience: state.productInfo.targetAudience,
+          keywords: state.keywords,
+          threads: state.threads,
+        }),
+      })
+
+      const data = await response.json()
+
+      if (!response.ok) {
+        setError(data.error || "Failed to save product")
+        return
+      }
+
+      router.push(`/monitor/${data.id}`)
+    } catch {
+      setError("Failed to connect to server")
+    } finally {
+      setIsSaving(false)
+    }
   }
 
   const selectedThread = state.threads.find((t) => t.redditThreadId === selectedThreadId)
@@ -548,6 +583,51 @@ export default function SetupPage() {
               <Button type="button" onClick={handleThreadsSubmit}>
                 Continue
                 <ArrowRight data-icon="inline-end" />
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {state.step === 5 && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Ready to start monitoring</CardTitle>
+            <CardDescription>
+              Review your setup and save to start discovering engagement opportunities.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-6">
+            <div className="space-y-4">
+              <div className="rounded-md border p-4 space-y-2">
+                <h4 className="font-medium">{state.productInfo?.name}</h4>
+                {state.productInfo?.description && (
+                  <p className="text-sm text-muted-foreground">{state.productInfo.description}</p>
+                )}
+              </div>
+
+              <div className="flex items-center gap-4 text-sm text-muted-foreground">
+                <span>{state.keywords.length} keywords</span>
+                <span>{state.threads.length} threads found</span>
+              </div>
+            </div>
+
+            {error && <p className="text-sm text-destructive">{error}</p>}
+
+            <div className="flex justify-between pt-2">
+              <Button type="button" variant="outline" onClick={handleBack}>
+                <ArrowLeft data-icon="inline-start" />
+                Back
+              </Button>
+              <Button type="button" onClick={handleSave} disabled={isSaving}>
+                {isSaving ? (
+                  <>
+                    <Spinner size="sm" className="mr-2" />
+                    Saving...
+                  </>
+                ) : (
+                  "Save & Start Monitoring"
+                )}
               </Button>
             </div>
           </CardContent>
