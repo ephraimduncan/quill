@@ -319,7 +319,7 @@ Mounted at `/api/*` via Next.js catch-all route.
 - [x] Response generation API
 - [x] Response editor panel
 - [x] Reddit posting (client-side)
-- [ ] Toast notifications
+- [x] Toast notifications
 
 ### Phase 5: Monitoring
 - [ ] Monitoring view with tabs

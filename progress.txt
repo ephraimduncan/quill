@@ -273,3 +273,19 @@
   - Network error handling
   - Missing permalink handling
 - Total: 155 tests passing across 14 files
+
+### Completed: Toast notifications
+
+- Installed sonner v2.0.7 for toast notifications
+- Added Toaster component to `app/layout.tsx`:
+  - Imported from sonner
+  - Positioned at bottom-right
+- Updated `components/response-editor-panel.tsx`:
+  - Added toast import from sonner
+  - Added toast.success() call on successful Reddit post
+  - Toast displays "Posted to Reddit successfully!"
+- Added test suite in `__tests__/toast.test.ts` (7 tests):
+  - Toaster component configuration in layout
+  - Toast import and usage in response editor panel
+  - sonner package dependency verification
+- Total: 162 tests passing across 15 files

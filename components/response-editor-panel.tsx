@@ -2,6 +2,7 @@
 
 import { useState } from "react"
 import { RefreshCw, Send, Sparkles } from "lucide-react"
+import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
 import { Spinner } from "@/components/ui/spinner"
@@ -107,6 +108,7 @@ export function ResponseEditorPanel({
       }
 
       setIsPosted(true)
+      toast.success("Posted to Reddit successfully!")
       onPostSuccess?.(data.commentUrl)
     } catch {
       setError("Failed to connect to server")
