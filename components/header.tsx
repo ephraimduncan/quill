@@ -4,11 +4,7 @@ import { IconMenu2 } from "@tabler/icons-react"
 import { Button } from "@/components/ui/button"
 import { UserMenu } from "@/components/user-menu"
 
-interface HeaderProps {
-  onMenuClick: () => void
-}
-
-export function Header({ onMenuClick }: HeaderProps) {
+export function Header({ onMenuClick }: { onMenuClick: () => void }) {
   return (
     <header className="h-14 border-b border-border bg-background flex items-center justify-between px-4">
       <div className="flex items-center gap-3">

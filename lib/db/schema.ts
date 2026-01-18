@@ -5,9 +5,7 @@ export * from "@/lib/auth/schema";
 
 export const products = sqliteTable("products", {
   id: text("id").primaryKey(),
-  userId: text("user_id")
-    .notNull()
-    .references(() => user.id),
+  userId: text("user_id").notNull().references(() => user.id),
   url: text("url").notNull(),
   name: text("name").notNull(),
   description: text("description").notNull(),
@@ -17,17 +15,13 @@ export const products = sqliteTable("products", {
 
 export const keywords = sqliteTable("keywords", {
   id: text("id").primaryKey(),
-  productId: text("product_id")
-    .notNull()
-    .references(() => products.id, { onDelete: "cascade" }),
+  productId: text("product_id").notNull().references(() => products.id, { onDelete: "cascade" }),
   keyword: text("keyword").notNull(),
 });
 
 export const threads = sqliteTable("threads", {
   id: text("id").primaryKey(),
-  productId: text("product_id")
-    .notNull()
-    .references(() => products.id, { onDelete: "cascade" }),
+  productId: text("product_id").notNull().references(() => products.id, { onDelete: "cascade" }),
   redditThreadId: text("reddit_thread_id").notNull(),
   title: text("title").notNull(),
   bodyPreview: text("body_preview").notNull(),
@@ -35,9 +29,7 @@ export const threads = sqliteTable("threads", {
   url: text("url").notNull(),
   createdUtc: integer("created_utc").notNull(),
   discoveredAt: integer("discovered_at").notNull(),
-  status: text("status", { enum: ["active", "dismissed"] })
-    .notNull()
-    .default("active"),
+  status: text("status", { enum: ["active", "dismissed"] }).notNull().default("active"),
   isNew: integer("is_new", { mode: "boolean" }).notNull().default(true),
   matchedKeyword: text("matched_keyword"),
 });

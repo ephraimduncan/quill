@@ -35,7 +35,7 @@ export function ResponseEditorPanel({
   const [error, setError] = useState<string | null>(null)
   const [copied, setCopied] = useState(false)
 
-  const generateResponse = async () => {
+  async function generateResponse() {
     setIsGenerating(true)
     setError(null)
 
@@ -73,12 +73,12 @@ export function ResponseEditorPanel({
     }
   }
 
-  const handleResponseChange = (value: string) => {
+  function handleResponseChange(value: string) {
     setResponse(value)
     onResponseChange?.(value)
   }
 
-  const copyToClipboard = async () => {
+  async function copyToClipboard() {
     await navigator.clipboard.writeText(response)
     setCopied(true)
     toast.success("Response copied to clipboard")
@@ -86,10 +86,15 @@ export function ResponseEditorPanel({
   }
 
   const hasResponse = response.length > 0
+  const showGenerateButton = !hasResponse && !isGenerating
+  const showEditor = hasResponse && !isGenerating
+
+  const CopyIcon = copied ? Check : Copy
+  const copyLabel = copied ? "Copied" : "Copy"
 
   return (
     <div className="space-y-4">
-      {!hasResponse && !isGenerating && (
+      {showGenerateButton && (
         <Button onClick={generateResponse} className="w-full">
           <Sparkles className="size-4 mr-2" />
           Generate Response
@@ -105,7 +110,7 @@ export function ResponseEditorPanel({
 
       {error && <p className="text-sm text-destructive">{error}</p>}
 
-      {hasResponse && !isGenerating && (
+      {showEditor && (
         <>
           <Textarea
             value={response}
@@ -124,17 +129,8 @@ export function ResponseEditorPanel({
               Regenerate
             </Button>
             <Button onClick={copyToClipboard}>
-              {copied ? (
-                <>
-                  <Check className="size-4 mr-2" />
-                  Copied
-                </>
-              ) : (
-                <>
-                  <Copy className="size-4 mr-2" />
-                  Copy
-                </>
-              )}
+              <CopyIcon className="size-4 mr-2" />
+              {copyLabel}
             </Button>
           </div>
         </>

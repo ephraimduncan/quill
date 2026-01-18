@@ -17,16 +17,12 @@ export default function LandingPage() {
     }
   }, [session, router])
 
-  if (isPending) {
+  if (isPending || session?.user) {
     return (
       <div className="min-h-screen flex items-center justify-center">
         <Spinner />
       </div>
     )
-  }
-
-  if (session?.user) {
-    return null
   }
 
   return (

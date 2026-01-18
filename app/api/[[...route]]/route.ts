@@ -9,7 +9,7 @@ import { z } from "zod";
 import { auth } from "@/lib/auth";
 import { db, products, threads, keywords, redditSyncState } from "@/lib/db";
 import { fetchLatestPostId, batchFetchPosts, generateIdRange, base36ToNumber } from "@/lib/reddit/id-fetcher";
-import { buildMatcher, type KeywordEntry } from "@/lib/reddit/keyword-matcher";
+import { buildMatcher, type KeywordMatch } from "@/lib/reddit/keyword-matcher";
 import { extractModel, keywordsModel, responseModel } from "@/lib/models";
 
 type Variables = {
@@ -18,6 +18,55 @@ type Variables = {
 };
 
 const app = new Hono<{ Variables: Variables }>().basePath("/api");
+
+async function findUserProduct(userId: string, productId: string) {
+  const [product] = await db
+    .select()
+    .from(products)
+    .where(and(eq(products.id, productId), eq(products.userId, userId)));
+  return product ?? null;
+}
+
+async function findThreadWithOwnership(userId: string, threadId: string) {
+  const [thread] = await db.select().from(threads).where(eq(threads.id, threadId));
+  if (!thread) return null;
+  const product = await findUserProduct(userId, thread.productId);
+  if (!product) return null;
+  return thread;
+}
+
+function formatError(prefix: string, err: unknown): string {
+  return `${prefix}: ${err instanceof Error ? err.message : "Unknown error"}`;
+}
+
+type RedditThread = {
+  id: string;
+  title: string;
+  selftext: string;
+  subreddit: string;
+  permalink: string;
+  created_utc: number;
+};
+
+type ThreadResult = {
+  redditThreadId: string;
+  title: string;
+  bodyPreview: string;
+  subreddit: string;
+  url: string;
+  createdUtc: number;
+};
+
+function redditThreadToResult(thread: RedditThread): ThreadResult {
+  return {
+    redditThreadId: thread.id,
+    title: thread.title,
+    bodyPreview: (thread.selftext || "").slice(0, 200),
+    subreddit: thread.subreddit,
+    url: `https://reddit.com${thread.permalink}`,
+    createdUtc: thread.created_utc,
+  };
+}
 
 const normalizeUrlInput = (value: string) => {
   const trimmed = value.trim();
@@ -62,9 +111,7 @@ app.get("/health", (c) => {
 
 app.get("/products", async (c) => {
   const user = c.get("user");
-  if (!user) {
-    return c.json({ error: "Unauthorized" }, 401);
-  }
+  if (!user) return c.json({ error: "Unauthorized" }, 401);
 
   const userProducts = await db
     .select({
@@ -109,30 +156,16 @@ const createProductSchema = z.object({
 
 app.get("/products/:id", async (c) => {
   const user = c.get("user");
-  if (!user) {
-    return c.json({ error: "Unauthorized" }, 401);
-  }
+  if (!user) return c.json({ error: "Unauthorized" }, 401);
 
   const productId = c.req.param("id");
+  const product = await findUserProduct(user.id, productId);
+  if (!product) return c.json({ error: "Product not found" }, 404);
 
-  const [product] = await db
-    .select()
-    .from(products)
-    .where(and(eq(products.id, productId), eq(products.userId, user.id)));
-
-  if (!product) {
-    return c.json({ error: "Product not found" }, 404);
-  }
-
-  const productKeywords = await db
-    .select()
-    .from(keywords)
-    .where(eq(keywords.productId, productId));
-
-  const productThreads = await db
-    .select()
-    .from(threads)
-    .where(eq(threads.productId, productId));
+  const [productKeywords, productThreads] = await Promise.all([
+    db.select().from(keywords).where(eq(keywords.productId, productId)),
+    db.select().from(threads).where(eq(threads.productId, productId)),
+  ]);
 
   return c.json({
     ...product,
@@ -143,16 +176,11 @@ app.get("/products/:id", async (c) => {
 
 app.post("/products", async (c) => {
   const user = c.get("user");
-  if (!user) {
-    return c.json({ error: "Unauthorized" }, 401);
-  }
+  if (!user) return c.json({ error: "Unauthorized" }, 401);
 
   const body = await c.req.json();
   const parsed = createProductSchema.safeParse(body);
-
-  if (!parsed.success) {
-    return c.json({ error: "Invalid request data" }, 400);
-  }
+  if (!parsed.success) return c.json({ error: "Invalid request data" }, 400);
 
   const data = parsed.data;
   const productId = randomUUID();
@@ -209,27 +237,15 @@ const updateProductSchema = z.object({
 
 app.put("/products/:id", async (c) => {
   const user = c.get("user");
-  if (!user) {
-    return c.json({ error: "Unauthorized" }, 401);
-  }
+  if (!user) return c.json({ error: "Unauthorized" }, 401);
 
   const productId = c.req.param("id");
-
-  const [existing] = await db
-    .select()
-    .from(products)
-    .where(and(eq(products.id, productId), eq(products.userId, user.id)));
-
-  if (!existing) {
-    return c.json({ error: "Product not found" }, 404);
-  }
+  const existing = await findUserProduct(user.id, productId);
+  if (!existing) return c.json({ error: "Product not found" }, 404);
 
   const body = await c.req.json();
   const parsed = updateProductSchema.safeParse(body);
-
-  if (!parsed.success) {
-    return c.json({ error: "Invalid request data" }, 400);
-  }
+  if (!parsed.success) return c.json({ error: "Invalid request data" }, 400);
 
   const data = parsed.data;
 
@@ -315,18 +331,33 @@ const toExactPhraseQuery = (value: string) => {
   return normalized ? `"${normalized}"` : "";
 };
 
+async function searchRedditForKeyword(keyword: string): Promise<RedditThread[]> {
+  const phraseQuery = toExactPhraseQuery(keyword);
+  if (!phraseQuery) return [];
+
+  const searchUrl = new URL("https://www.reddit.com/search.json");
+  searchUrl.searchParams.set("q", phraseQuery);
+  searchUrl.searchParams.set("sort", "new");
+  searchUrl.searchParams.set("limit", "10");
+  searchUrl.searchParams.set("t", "week");
+  searchUrl.searchParams.set("type", "link");
+
+  const response = await fetch(searchUrl.toString(), {
+    headers: { "User-Agent": "RedditAgent/1.0" },
+  });
+
+  if (!response.ok) return [];
+  const data = await response.json();
+  return (data?.data?.children ?? []).map((p: { data: RedditThread }) => p.data);
+}
+
 app.post("/extract", async (c) => {
   const user = c.get("user");
-  if (!user) {
-    return c.json({ error: "Unauthorized" }, 401);
-  }
+  if (!user) return c.json({ error: "Unauthorized" }, 401);
 
   const body = await c.req.json();
   const { url } = body;
-
-  if (!url || typeof url !== "string") {
-    return c.json({ error: "URL is required" }, 400);
-  }
+  if (!url || typeof url !== "string") return c.json({ error: "URL is required" }, 400);
 
   const normalizedUrl = normalizeUrlInput(url);
   let parsedUrl: URL;
@@ -342,48 +373,33 @@ app.post("/extract", async (c) => {
   let html: string;
   try {
     const response = await fetch(parsedUrl.toString(), {
-      headers: {
-        "User-Agent":
-          "Mozilla/5.0 (compatible; RedditAgent/1.0; +https://reddit-agent.app)",
-      },
+      headers: { "User-Agent": "Mozilla/5.0 (compatible; RedditAgent/1.0; +https://reddit-agent.app)" },
     });
-    if (!response.ok) {
-      return c.json({ error: `Failed to fetch URL: ${response.status}` }, 400);
-    }
+    if (!response.ok) return c.json({ error: `Failed to fetch URL: ${response.status}` }, 400);
     html = await response.text();
   } catch (err) {
-    return c.json(
-      { error: `Failed to fetch URL: ${err instanceof Error ? err.message : "Unknown error"}` },
-      400
-    );
+    return c.json({ error: formatError("Failed to fetch URL", err) }, 400);
   }
 
   const dom = new JSDOM(html, { url: parsedUrl.toString() });
-  const reader = new Readability(dom.window.document);
-  const article = reader.parse();
-
+  const article = new Readability(dom.window.document).parse();
   if (!article || !article.textContent?.trim()) {
     return c.json({ error: "Could not extract content from URL" }, 400);
   }
 
   const pageText = article.textContent.replace(/\s+/g, " ").trim();
-  const pageContext = `
-Title: ${article.title || "Unknown"}
+  const pageContext = `Title: ${article.title || "Unknown"}
 Site: ${article.siteName || parsedUrl.hostname}
 Content:
-${pageText.slice(0, 8000)}
-`.trim();
-  const contentForLLM = pageContext;
+${pageText.slice(0, 8000)}`.trim();
 
   try {
     const { output } = await generateText({
       model: extractModel,
-      output: Output.object({
-        schema: productInfoSchema,
-      }),
+      output: Output.object({ schema: productInfoSchema }),
       prompt: `Extract product information from this webpage content. If any field cannot be determined, make a reasonable inference based on the available content.
 
-${contentForLLM}`,
+${pageContext}`,
     });
 
     return c.json({
@@ -394,40 +410,30 @@ ${contentForLLM}`,
       pageContext,
     });
   } catch (err) {
-    return c.json(
-      { error: `Failed to extract product info: ${err instanceof Error ? err.message : "Unknown error"}` },
-      500
-    );
+    return c.json({ error: formatError("Failed to extract product info", err) }, 500);
   }
 });
 
 app.post("/keywords/generate", async (c) => {
   const user = c.get("user");
-  if (!user) {
-    return c.json({ error: "Unauthorized" }, 401);
-  }
+  if (!user) return c.json({ error: "Unauthorized" }, 401);
 
   const body = await c.req.json();
   const { name, description, targetAudience, pageContext } = body;
-
-  if (!name || typeof name !== "string") {
-    return c.json({ error: "Product name is required" }, 400);
-  }
+  if (!name || typeof name !== "string") return c.json({ error: "Product name is required" }, 400);
 
   const trimmedPageContext = typeof pageContext === "string" ? pageContext.trim().slice(0, 6000) : "";
-  const productContext = `
-Product: ${name}
-${description ? `Description: ${description}` : ""}
-${targetAudience ? `Target Audience: ${targetAudience}` : ""}
-${trimmedPageContext ? `Page Content (verbatim):\n${trimmedPageContext}` : ""}
-`.trim();
+  const productContext = [
+    `Product: ${name}`,
+    description && `Description: ${description}`,
+    targetAudience && `Target Audience: ${targetAudience}`,
+    trimmedPageContext && `Page Content (verbatim):\n${trimmedPageContext}`,
+  ].filter(Boolean).join("\n");
 
   try {
     const { output } = await generateText({
       model: keywordsModel,
-      output: Output.object({
-        schema: keywordsSchema,
-      }),
+      output: Output.object({ schema: keywordsSchema }),
       prompt: `Generate 10 short, specific keywords to find Reddit discussions where users are describing needs this product could help with.
 
 ${productContext}
@@ -443,89 +449,35 @@ Requirements:
       temperature: 0.2,
     });
 
-    const normalizedKeywords = output!.keywords.map((keyword) => normalizeKeyword(keyword));
-    const balancedKeywords = ensureTwoWordMix(normalizedKeywords);
-
+    const balancedKeywords = ensureTwoWordMix(output!.keywords.map(normalizeKeyword));
     return c.json({ keywords: balancedKeywords });
   } catch (err) {
-    return c.json(
-      { error: `Failed to generate keywords: ${err instanceof Error ? err.message : "Unknown error"}` },
-      500
-    );
+    return c.json({ error: formatError("Failed to generate keywords", err) }, 500);
   }
 });
 
-type RedditThread = {
-  id: string;
-  title: string;
-  selftext: string;
-  subreddit: string;
-  permalink: string;
-  created_utc: number;
-};
-
 app.post("/threads/search", async (c) => {
   const user = c.get("user");
-  if (!user) {
-    return c.json({ error: "Unauthorized" }, 401);
-  }
+  if (!user) return c.json({ error: "Unauthorized" }, 401);
 
   const body = await c.req.json();
   const { keywords } = body;
-
   if (!keywords || !Array.isArray(keywords) || keywords.length === 0) {
     return c.json({ error: "Keywords array is required" }, 400);
   }
 
   const sevenDaysAgo = Math.floor(Date.now() / 1000) - 7 * 24 * 60 * 60;
   const seenIds = new Set<string>();
-  const allThreads: Array<{
-    redditThreadId: string;
-    title: string;
-    bodyPreview: string;
-    subreddit: string;
-    url: string;
-    createdUtc: number;
-  }> = [];
+  const allThreads: ThreadResult[] = [];
 
   for (const keyword of keywords) {
     if (typeof keyword !== "string" || !keyword.trim()) continue;
-
     try {
-      const searchUrl = new URL("https://www.reddit.com/search.json");
-      const phraseQuery = toExactPhraseQuery(keyword);
-      if (!phraseQuery) continue;
-      searchUrl.searchParams.set("q", phraseQuery);
-      searchUrl.searchParams.set("sort", "new");
-      searchUrl.searchParams.set("limit", "10");
-      searchUrl.searchParams.set("t", "week");
-      searchUrl.searchParams.set("type", "link");
-
-      const response = await fetch(searchUrl.toString(), {
-        headers: {
-          "User-Agent": "RedditAgent/1.0",
-        },
-      });
-
-      if (!response.ok) continue;
-
-      const data = await response.json();
-      const posts = data?.data?.children || [];
-
-      for (const post of posts) {
-        const thread = post.data as RedditThread;
-        if (seenIds.has(thread.id)) continue;
-        if (thread.created_utc < sevenDaysAgo) continue;
-
+      const posts = await searchRedditForKeyword(keyword);
+      for (const thread of posts) {
+        if (seenIds.has(thread.id) || thread.created_utc < sevenDaysAgo) continue;
         seenIds.add(thread.id);
-        allThreads.push({
-          redditThreadId: thread.id,
-          title: thread.title,
-          bodyPreview: (thread.selftext || "").slice(0, 200),
-          subreddit: thread.subreddit,
-          url: `https://reddit.com${thread.permalink}`,
-          createdUtc: thread.created_utc,
-        });
+        allThreads.push(redditThreadToResult(thread));
       }
     } catch {
       continue;
@@ -533,85 +485,39 @@ app.post("/threads/search", async (c) => {
   }
 
   allThreads.sort((a, b) => b.createdUtc - a.createdUtc);
-
   return c.json({ threads: allThreads });
 });
 
 app.post("/threads/:id/mark-read", async (c) => {
   const user = c.get("user");
-  if (!user) {
-    return c.json({ error: "Unauthorized" }, 401);
-  }
+  if (!user) return c.json({ error: "Unauthorized" }, 401);
 
-  const threadId = c.req.param("id");
+  const thread = await findThreadWithOwnership(user.id, c.req.param("id"));
+  if (!thread) return c.json({ error: "Thread not found" }, 404);
 
-  const [thread] = await db.select().from(threads).where(eq(threads.id, threadId));
-  if (!thread) {
-    return c.json({ error: "Thread not found" }, 404);
-  }
-
-  const [product] = await db
-    .select()
-    .from(products)
-    .where(and(eq(products.id, thread.productId), eq(products.userId, user.id)));
-  if (!product) {
-    return c.json({ error: "Thread not found" }, 404);
-  }
-
-  await db.update(threads).set({ isNew: false }).where(eq(threads.id, threadId));
-
+  await db.update(threads).set({ isNew: false }).where(eq(threads.id, thread.id));
   return c.json({ success: true });
 });
 
 app.post("/threads/:id/dismiss", async (c) => {
   const user = c.get("user");
-  if (!user) {
-    return c.json({ error: "Unauthorized" }, 401);
-  }
+  if (!user) return c.json({ error: "Unauthorized" }, 401);
 
-  const threadId = c.req.param("id");
+  const thread = await findThreadWithOwnership(user.id, c.req.param("id"));
+  if (!thread) return c.json({ error: "Thread not found" }, 404);
 
-  const [thread] = await db.select().from(threads).where(eq(threads.id, threadId));
-  if (!thread) {
-    return c.json({ error: "Thread not found" }, 404);
-  }
-
-  const [product] = await db
-    .select()
-    .from(products)
-    .where(and(eq(products.id, thread.productId), eq(products.userId, user.id)));
-  if (!product) {
-    return c.json({ error: "Thread not found" }, 404);
-  }
-
-  await db.update(threads).set({ status: "dismissed" }).where(eq(threads.id, threadId));
-
+  await db.update(threads).set({ status: "dismissed" }).where(eq(threads.id, thread.id));
   return c.json({ success: true });
 });
 
 app.post("/threads/:id/restore", async (c) => {
   const user = c.get("user");
-  if (!user) {
-    return c.json({ error: "Unauthorized" }, 401);
-  }
+  if (!user) return c.json({ error: "Unauthorized" }, 401);
 
-  const threadId = c.req.param("id");
+  const thread = await findThreadWithOwnership(user.id, c.req.param("id"));
+  if (!thread) return c.json({ error: "Thread not found" }, 404);
 
-  const [thread] = await db.select().from(threads).where(eq(threads.id, threadId));
-  if (!thread) {
-    return c.json({ error: "Thread not found" }, 404);
-  }
-
-  const [product] = await db
-    .select()
-    .from(products)
-    .where(and(eq(products.id, thread.productId), eq(products.userId, user.id)));
-  if (!product) {
-    return c.json({ error: "Thread not found" }, 404);
-  }
-
-  await db.update(threads).set({ status: "active" }).where(eq(threads.id, threadId));
-
+  await db.update(threads).set({ status: "active" }).where(eq(threads.id, thread.id));
   return c.json({ success: true });
 });
 
@@ -621,99 +527,44 @@ const refreshThreadsSchema = z.object({
 
 app.post("/threads/refresh", async (c) => {
   const user = c.get("user");
-  if (!user) {
-    return c.json({ error: "Unauthorized" }, 401);
-  }
+  if (!user) return c.json({ error: "Unauthorized" }, 401);
 
   const body = await c.req.json();
   const parsed = refreshThreadsSchema.safeParse(body);
-
-  if (!parsed.success) {
-    return c.json({ error: "Invalid request data" }, 400);
-  }
+  if (!parsed.success) return c.json({ error: "Invalid request data" }, 400);
 
   const { productId } = parsed.data;
+  const product = await findUserProduct(user.id, productId);
+  if (!product) return c.json({ error: "Product not found" }, 404);
 
-  const [product] = await db
-    .select()
-    .from(products)
-    .where(and(eq(products.id, productId), eq(products.userId, user.id)));
-
-  if (!product) {
-    return c.json({ error: "Product not found" }, 404);
-  }
-
-  const productKeywords = await db
-    .select()
-    .from(keywords)
-    .where(eq(keywords.productId, productId));
-
-  if (productKeywords.length === 0) {
-    return c.json({ error: "No keywords found for this product" }, 400);
-  }
+  const productKeywords = await db.select().from(keywords).where(eq(keywords.productId, productId));
+  if (productKeywords.length === 0) return c.json({ error: "No keywords found for this product" }, 400);
 
   const existingThreads = await db
     .select({ redditThreadId: threads.redditThreadId })
     .from(threads)
     .where(eq(threads.productId, productId));
-
   const existingIds = new Set(existingThreads.map((t) => t.redditThreadId));
 
   const sevenDaysAgo = Math.floor(Date.now() / 1000) - 7 * 24 * 60 * 60;
   const seenIds = new Set<string>();
-  const newThreads: Array<{
-    redditThreadId: string;
-    title: string;
-    bodyPreview: string;
-    subreddit: string;
-    url: string;
-    createdUtc: number;
-  }> = [];
+  const newThreads: ThreadResult[] = [];
 
   for (const kw of productKeywords) {
     try {
-      const searchUrl = new URL("https://www.reddit.com/search.json");
-      const phraseQuery = toExactPhraseQuery(kw.keyword);
-      if (!phraseQuery) continue;
-      searchUrl.searchParams.set("q", phraseQuery);
-      searchUrl.searchParams.set("sort", "new");
-      searchUrl.searchParams.set("limit", "10");
-      searchUrl.searchParams.set("t", "week");
-      searchUrl.searchParams.set("type", "link");
-
-      const response = await fetch(searchUrl.toString(), {
-        headers: { "User-Agent": "RedditAgent/1.0" },
-      });
-
-      if (!response.ok) continue;
-
-      const data = await response.json();
-      const posts = data?.data?.children || [];
-
-      for (const post of posts) {
-        const thread = post.data as RedditThread;
-        if (seenIds.has(thread.id)) continue;
-        if (existingIds.has(thread.id)) continue;
-        if (thread.created_utc < sevenDaysAgo) continue;
-
+      const posts = await searchRedditForKeyword(kw.keyword);
+      for (const thread of posts) {
+        if (seenIds.has(thread.id) || existingIds.has(thread.id) || thread.created_utc < sevenDaysAgo) continue;
         seenIds.add(thread.id);
-        newThreads.push({
-          redditThreadId: thread.id,
-          title: thread.title,
-          bodyPreview: (thread.selftext || "").slice(0, 200),
-          subreddit: thread.subreddit,
-          url: `https://reddit.com${thread.permalink}`,
-          createdUtc: thread.created_utc,
-        });
+        newThreads.push(redditThreadToResult(thread));
       }
     } catch {
       continue;
     }
   }
 
-  const now = Math.floor(Date.now() / 1000);
-
   if (newThreads.length > 0) {
+    const now = Math.floor(Date.now() / 1000);
     await db.insert(threads).values(
       newThreads.map((thread) => ({
         id: randomUUID(),
@@ -749,16 +600,11 @@ const generateResponseSchema = z.object({
 
 app.post("/response/generate", async (c) => {
   const user = c.get("user");
-  if (!user) {
-    return c.json({ error: "Unauthorized" }, 401);
-  }
+  if (!user) return c.json({ error: "Unauthorized" }, 401);
 
   const body = await c.req.json();
   const parsed = generateResponseSchema.safeParse(body);
-
-  if (!parsed.success) {
-    return c.json({ error: "Invalid request data" }, 400);
-  }
+  if (!parsed.success) return c.json({ error: "Invalid request data" }, 400);
 
   const { thread, product } = parsed.data;
 
@@ -787,18 +633,10 @@ GUIDELINES:
 Write only the response text, nothing else.`;
 
   try {
-    const { text } = await generateText({
-      model: responseModel,
-      prompt,
-      temperature: 0.7,
-    });
-
+    const { text } = await generateText({ model: responseModel, prompt, temperature: 0.7 });
     return c.json({ response: text });
   } catch (err) {
-    return c.json(
-      { error: `Failed to generate response: ${err instanceof Error ? err.message : "Unknown error"}` },
-      500
-    );
+    return c.json({ error: formatError("Failed to generate response", err) }, 500);
   }
 });
 
@@ -859,7 +697,7 @@ app.get("/cron/discover", async (c) => {
     });
   }
 
-  const keywordEntries: KeywordEntry[] = allKeywords.map((k) => ({
+  const keywordEntries: KeywordMatch[] = allKeywords.map((k) => ({
     keyword: k.keyword,
     productId: k.productId,
   }));
@@ -875,8 +713,6 @@ app.get("/cron/discover", async (c) => {
 
   const sevenDaysAgo = Math.floor(Date.now() / 1000) - 7 * 24 * 60 * 60;
   const now = Math.floor(Date.now() / 1000);
-  let totalNewThreads = 0;
-
   const threadsToInsert: Array<{
     id: string;
     productId: string;
@@ -922,7 +758,6 @@ app.get("/cron/discover", async (c) => {
 
   if (threadsToInsert.length > 0) {
     await db.insert(threads).values(threadsToInsert);
-    totalNewThreads = threadsToInsert.length;
   }
 
   await db
@@ -933,7 +768,7 @@ app.get("/cron/discover", async (c) => {
   return c.json({
     success: true,
     postsProcessed: posts.length,
-    newThreadsFound: totalNewThreads,
+    newThreadsFound: threadsToInsert.length,
   });
 });
 

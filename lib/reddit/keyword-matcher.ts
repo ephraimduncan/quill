@@ -1,52 +1,39 @@
+export interface KeywordMatch {
+  keyword: string;
+  productId: string;
+}
+
 interface TrieNode {
   children: Map<string, TrieNode>;
   fail: TrieNode | null;
-  output: Array<{ keyword: string; productId: string }>;
+  output: KeywordMatch[];
 }
 
 function createNode(): TrieNode {
-  return {
-    children: new Map(),
-    fail: null,
-    output: [],
-  };
-}
-
-export interface KeywordEntry {
-  keyword: string;
-  productId: string;
-}
-
-export interface MatchResult {
-  keyword: string;
-  productId: string;
+  return { children: new Map(), fail: null, output: [] };
 }
 
 export class AhoCorasick {
   private root: TrieNode;
 
-  constructor(entries: KeywordEntry[]) {
+  constructor(entries: KeywordMatch[]) {
     this.root = createNode();
     this.buildTrie(entries);
     this.buildFailureLinks();
   }
 
-  private buildTrie(entries: KeywordEntry[]): void {
+  private buildTrie(entries: KeywordMatch[]): void {
     for (const entry of entries) {
       let node = this.root;
-      const keyword = entry.keyword.toLowerCase();
-
-      for (const char of keyword) {
-        if (!node.children.has(char)) {
-          node.children.set(char, createNode());
+      for (const char of entry.keyword.toLowerCase()) {
+        let child = node.children.get(char);
+        if (!child) {
+          child = createNode();
+          node.children.set(char, child);
         }
-        node = node.children.get(char)!;
+        node = child;
       }
-
-      node.output.push({
-        keyword: entry.keyword,
-        productId: entry.productId,
-      });
+      node.output.push(entry);
     }
   }
 
@@ -65,38 +52,34 @@ export class AhoCorasick {
       for (const [char, child] of current.children) {
         queue.push(child);
 
-        let failure = current.fail!;
-        while (failure !== this.root && !failure.children.has(char)) {
-          failure = failure.fail!;
+        let fail = current.fail!;
+        while (fail !== this.root && !fail.children.has(char)) {
+          fail = fail.fail!;
         }
 
-        child.fail = failure.children.get(char) ?? this.root;
-        if (child.fail === child) {
-          child.fail = this.root;
-        }
-
-        child.output = [...child.output, ...child.fail.output];
+        const failChild = fail.children.get(char);
+        child.fail = failChild && failChild !== child ? failChild : this.root;
+        child.output.push(...child.fail.output);
       }
     }
   }
 
-  match(text: string): MatchResult[] {
-    const results: MatchResult[] = [];
+  match(text: string): KeywordMatch[] {
+    const results: KeywordMatch[] = [];
     const seen = new Set<string>();
     let node = this.root;
-    const lowerText = text.toLowerCase();
 
-    for (const char of lowerText) {
+    for (const char of text.toLowerCase()) {
       while (node !== this.root && !node.children.has(char)) {
         node = node.fail!;
       }
       node = node.children.get(char) ?? this.root;
 
-      for (const entry of node.output) {
-        const key = `${entry.productId}:${entry.keyword}`;
+      for (const match of node.output) {
+        const key = `${match.productId}:${match.keyword}`;
         if (!seen.has(key)) {
           seen.add(key);
-          results.push(entry);
+          results.push(match);
         }
       }
     }
@@ -105,6 +88,6 @@ export class AhoCorasick {
   }
 }
 
-export function buildMatcher(entries: KeywordEntry[]): AhoCorasick {
+export function buildMatcher(entries: KeywordMatch[]): AhoCorasick {
   return new AhoCorasick(entries);
 }

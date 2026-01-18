@@ -1,4 +1,5 @@
 const BASE36_CHARS = "0123456789abcdefghijklmnopqrstuvwxyz";
+const REDDIT_HEADERS = { "User-Agent": "RedditAgent/1.0" };
 
 export function base36ToNumber(id: string): bigint {
   let result = 0n;
@@ -49,21 +50,20 @@ export interface RedditPost {
   created_utc: number;
 }
 
+interface RedditApiChild {
+  kind: string;
+  data: RedditPost;
+}
+
 export async function fetchLatestPostId(): Promise<string | null> {
   const res = await fetch(
     "https://www.reddit.com/r/all/new.json?limit=1&raw_json=1",
-    {
-      headers: {
-        "User-Agent": "RedditAgent/1.0",
-      },
-    }
+    { headers: REDDIT_HEADERS }
   );
-
   if (!res.ok) return null;
 
   const data = await res.json();
-  const post = data?.data?.children?.[0]?.data;
-  return post?.id ?? null;
+  return data?.data?.children?.[0]?.data?.id ?? null;
 }
 
 export async function batchFetchPosts(ids: string[]): Promise<RedditPost[]> {
@@ -72,37 +72,14 @@ export async function batchFetchPosts(ids: string[]): Promise<RedditPost[]> {
   const fullnames = ids.map((id) => `t3_${id}`).join(",");
   const res = await fetch(
     `https://api.reddit.com/api/info.json?id=${fullnames}&raw_json=1`,
-    {
-      headers: {
-        "User-Agent": "RedditAgent/1.0",
-      },
-    }
+    { headers: REDDIT_HEADERS }
   );
-
   if (!res.ok) return [];
 
   const data = await res.json();
-  const children = data?.data?.children ?? [];
+  const children: RedditApiChild[] = data?.data?.children ?? [];
 
   return children
-    .filter((child: { kind: string }) => child.kind === "t3")
-    .map(
-      (child: {
-        data: {
-          id: string;
-          title: string;
-          selftext: string;
-          subreddit: string;
-          permalink: string;
-          created_utc: number;
-        };
-      }) => ({
-        id: child.data.id,
-        title: child.data.title,
-        selftext: child.data.selftext,
-        subreddit: child.data.subreddit,
-        permalink: child.data.permalink,
-        created_utc: child.data.created_utc,
-      })
-    );
+    .filter((child) => child.kind === "t3")
+    .map((child) => child.data);
 }

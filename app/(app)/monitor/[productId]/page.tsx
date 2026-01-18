@@ -35,7 +35,7 @@ type Product = {
   threads: Thread[]
 }
 
-function formatRelativeTime(timestamp: number) {
+function formatRelativeTime(timestamp: number): string {
   const seconds = Math.floor(Date.now() / 1000 - timestamp)
   if (seconds < 60) return "just now"
   const minutes = Math.floor(seconds / 60)
@@ -44,6 +44,29 @@ function formatRelativeTime(timestamp: number) {
   if (hours < 24) return `${hours}h ago`
   const days = Math.floor(hours / 24)
   return `${days}d ago`
+}
+
+function pluralize(count: number, singular: string): string {
+  return `${count} ${singular}${count === 1 ? "" : "s"}`
+}
+
+function truncateText(text: string, maxLength: number): string {
+  if (!text) return "No preview available"
+  if (text.length <= maxLength) return text
+  return `${text.slice(0, maxLength)}...`
+}
+
+type ThreadMetadataProps = {
+  subreddit: string
+  createdUtc: number
+}
+
+function ThreadMetadata({ subreddit, createdUtc }: ThreadMetadataProps): React.ReactElement {
+  return (
+    <div className="text-xs text-muted-foreground mt-1">
+      r/{subreddit} · {formatRelativeTime(createdUtc)}
+    </div>
+  )
 }
 
 export default function MonitorPage() {
@@ -56,6 +79,18 @@ export default function MonitorPage() {
   const [selectedThreadId, setSelectedThreadId] = useState<string | null>(null)
   const [activeTab, setActiveTab] = useState("threads")
   const [isRefreshing, setIsRefreshing] = useState(false)
+
+  const updateThread = useCallback((threadId: string, updates: Partial<Thread>) => {
+    setProduct((prev) => {
+      if (!prev) return prev
+      return {
+        ...prev,
+        threads: prev.threads.map((t) =>
+          t.id === threadId ? { ...t, ...updates } : t
+        ),
+      }
+    })
+  }, [])
 
   useEffect(() => {
     async function fetchData() {
@@ -91,55 +126,27 @@ export default function MonitorPage() {
     const thread = product?.threads.find((t) => t.id === threadId)
     if (thread?.isNew) {
       await fetch(`/api/threads/${threadId}/mark-read`, { method: "POST" })
-      setProduct((prev) => {
-        if (!prev) return prev
-        return {
-          ...prev,
-          threads: prev.threads.map((t) =>
-            t.id === threadId ? { ...t, isNew: false } : t
-          ),
-        }
-      })
+      updateThread(threadId, { isNew: false })
     }
-  }, [product?.threads])
+  }, [product?.threads, updateThread])
 
   const handleDismiss = useCallback(async (threadId: string) => {
     const res = await fetch(`/api/threads/${threadId}/dismiss`, { method: "POST" })
-    if (res.ok) {
-      setProduct((prev) => {
-        if (!prev) return prev
-        return {
-          ...prev,
-          threads: prev.threads.map((t) =>
-            t.id === threadId ? { ...t, status: "dismissed" as const } : t
-          ),
-        }
-      })
-      const remaining = product?.threads.filter(
-        (t) => t.status === "active" && t.id !== threadId
-      )
-      if (remaining && remaining.length > 0) {
-        setSelectedThreadId(remaining[0].id)
-      } else {
-        setSelectedThreadId(null)
-      }
-    }
-  }, [product?.threads])
+    if (!res.ok) return
+
+    updateThread(threadId, { status: "dismissed" })
+    const remaining = product?.threads.filter(
+      (t) => t.status === "active" && t.id !== threadId
+    )
+    setSelectedThreadId(remaining?.[0]?.id ?? null)
+  }, [product?.threads, updateThread])
 
   const handleRestore = useCallback(async (threadId: string) => {
     const res = await fetch(`/api/threads/${threadId}/restore`, { method: "POST" })
     if (res.ok) {
-      setProduct((prev) => {
-        if (!prev) return prev
-        return {
-          ...prev,
-          threads: prev.threads.map((t) =>
-            t.id === threadId ? { ...t, status: "active" as const } : t
-          ),
-        }
-      })
+      updateThread(threadId, { status: "active" })
     }
-  }, [])
+  }, [updateThread])
 
   const handleRefreshThreads = useCallback(async () => {
     setIsRefreshing(true)
@@ -153,7 +160,7 @@ export default function MonitorPage() {
       const data = await res.json()
       if (res.ok) {
         if (data.newThreadsCount > 0) {
-          toast.success(`Found ${data.newThreadsCount} new thread${data.newThreadsCount === 1 ? "" : "s"}`)
+          toast.success(`Found ${pluralize(data.newThreadsCount, "new thread")}`)
           const productRes = await fetch(`/api/products/${productId}`)
           if (productRes.ok) {
             const productData = await productRes.json()
@@ -247,7 +254,7 @@ export default function MonitorPage() {
                 <div>
                   <CardTitle>Active Threads</CardTitle>
                   <CardDescription>
-                    {activeThreads.length} active thread{activeThreads.length !== 1 ? "s" : ""}
+                    {pluralize(activeThreads.length, "active thread")}
                   </CardDescription>
                 </div>
                 <Button
@@ -298,9 +305,7 @@ export default function MonitorPage() {
                               </Badge>
                             )}
                           </div>
-                          <div className="text-xs text-muted-foreground mt-1">
-                            r/{thread.subreddit} · {formatRelativeTime(thread.createdUtc)}
-                          </div>
+                          <ThreadMetadata subreddit={thread.subreddit} createdUtc={thread.createdUtc} />
                         </button>
                       ))}
                     </div>
@@ -314,9 +319,7 @@ export default function MonitorPage() {
                             {selectedThread.title}
                           </h3>
                           <p className="text-sm text-muted-foreground">
-                            {selectedThread.bodyPreview.length > 200
-                              ? `${selectedThread.bodyPreview.slice(0, 200)}...`
-                              : selectedThread.bodyPreview || "No preview available"}
+                            {truncateText(selectedThread.bodyPreview, 200)}
                           </p>
                           <div className="flex items-center gap-4 text-sm text-muted-foreground">
                             <span>r/{selectedThread.subreddit}</span>
@@ -377,7 +380,7 @@ export default function MonitorPage() {
             <CardHeader>
               <CardTitle>Dismissed Threads</CardTitle>
               <CardDescription>
-                {dismissedThreads.length} dismissed thread{dismissedThreads.length !== 1 ? "s" : ""}
+                {pluralize(dismissedThreads.length, "dismissed thread")}
               </CardDescription>
             </CardHeader>
             <CardContent>
@@ -397,9 +400,7 @@ export default function MonitorPage() {
                           <div className="font-medium text-sm line-clamp-2">
                             {thread.title}
                           </div>
-                          <div className="text-xs text-muted-foreground mt-1">
-                            r/{thread.subreddit} · {formatRelativeTime(thread.createdUtc)}
-                          </div>
+                          <ThreadMetadata subreddit={thread.subreddit} createdUtc={thread.createdUtc} />
                         </div>
                         <div className="flex items-center gap-3 shrink-0">
                           <button

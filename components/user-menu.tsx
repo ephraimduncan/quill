@@ -25,19 +25,17 @@ export function UserMenu() {
     return null
   }
 
-  const handleSignOut = async () => {
-    await signOut()
-  }
+  const { user } = session
 
   return (
     <DropdownMenu>
       <DropdownMenuTrigger
         className={cn(buttonVariants({ variant: "ghost", size: "icon" }), "rounded-full")}
       >
-        {session.user.image ? (
+        {user.image ? (
           <Image
-            src={session.user.image}
-            alt={session.user.name || "User avatar"}
+            src={user.image}
+            alt={user.name || "User avatar"}
             width={32}
             height={32}
             className="size-8 rounded-full"
@@ -51,13 +49,13 @@ export function UserMenu() {
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" sideOffset={8}>
         <div className="px-2 py-1.5">
-          <p className="text-sm font-medium">{session.user.name}</p>
-          {session.user.email && (
-            <p className="text-xs text-muted-foreground">{session.user.email}</p>
+          <p className="text-sm font-medium">{user.name}</p>
+          {user.email && (
+            <p className="text-xs text-muted-foreground">{user.email}</p>
           )}
         </div>
         <DropdownMenuSeparator />
-        <DropdownMenuItem onClick={handleSignOut}>
+        <DropdownMenuItem onClick={() => signOut()}>
           <IconLogout className="size-4" />
           Sign out
         </DropdownMenuItem>
