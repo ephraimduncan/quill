@@ -672,3 +672,25 @@
   - Thread detail panel shows title, preview, subreddit, and relative time
   - ResponseEditorPanel receives thread and product data via props
 - Total: 422 tests passing across 29 files
+
+### Completed: AI Gateway Verification (Verification Step 5)
+
+- Created `__tests__/ai-gateway-verification.test.ts` with 17 tests:
+  - Gateway configuration verification (3 tests)
+  - All AI endpoints use gateway client (3 tests)
+  - No direct OpenAI SDK usage (3 tests)
+  - Model configuration (2 tests)
+  - Environment configuration (3 tests)
+  - Gateway URL format (3 tests)
+- Tests verify:
+  - OpenAI client created with Vercel AI Gateway baseURL
+  - Uses VERCEL_AI_GATEWAY_API_KEY for authentication
+  - Client defined before any AI calls
+  - /extract, /keywords/generate, /response/generate all use gateway client
+  - No direct openai imports or OpenAI constructor usage
+  - All AI calls use gpt-4o-mini model
+  - Exactly 3 AI calls (2 generateObject, 1 generateText)
+  - .env.example has correct VERCEL_AI_GATEWAY_API_KEY configuration
+  - No legacy OPENAI_API_KEY in environment config
+  - Gateway URL uses HTTPS with /v1 path
+- Total: 439 tests passing across 30 files
