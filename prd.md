@@ -198,4 +198,4 @@ redditSyncState: {
 - [x] 3. **Keyword matching**: Add keyword → Poll → Confirm matching threads discovered
 - [x] 4. **Response generation**: Select thread → Generate → Copy button works → Reddit link opens
 - [x] 5. **AI Gateway**: Check Vercel dashboard for API calls routing through gateway
-- [ ] 6. **Cron**: Manually trigger `/api/cron/discover` → New threads discovered via ID polling
+- [x] 6. **Cron**: Manually trigger `/api/cron/discover` → New threads discovered via ID polling

@@ -694,3 +694,35 @@
   - No legacy OPENAI_API_KEY in environment config
   - Gateway URL uses HTTPS with /v1 path
 - Total: 439 tests passing across 30 files
+
+### Completed: Cron Verification (Verification Step 6)
+
+- Created `__tests__/cron-verification.test.ts` with 42 tests:
+  - Endpoint exists and accepts GET requests (3 tests)
+  - ID polling mechanism (6 tests)
+  - Keyword matching and thread discovery (4 tests)
+  - Thread storage (6 tests)
+  - Sync state updates (3 tests)
+  - Response includes discovery stats (3 tests)
+  - Vercel cron configuration (3 tests)
+  - Edge cases and error handling (3 tests)
+  - Base-36 ID handling (4 tests)
+  - Cron endpoint flow integration (4 tests)
+  - Manual trigger requirements (3 tests)
+- Tests verify:
+  - GET /api/cron/discover endpoint exists and requires Bearer authorization
+  - Fetches latest post ID from Reddit via r/all/new.json
+  - Reads and initializes sync state from database
+  - Generates ID range between last and latest post IDs
+  - Batch fetches posts using api.reddit.com/api/info.json with t3_ prefix
+  - Loads all keywords and builds Aho-Corasick matcher
+  - Matches keywords against post title + body
+  - Stores matchedKeyword in discovered threads
+  - Deduplicates by productId + redditThreadId combination
+  - Filters out posts older than 7 days
+  - Truncates bodyPreview to 200 characters
+  - Updates sync state after processing
+  - Returns postsProcessed and newThreadsFound counts
+  - Vercel.json configures cron to run at 6:00 UTC daily
+  - Handles edge cases: no latest post, no new posts, no keywords
+- Total: 481 tests passing across 31 files
