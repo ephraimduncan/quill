@@ -4,18 +4,13 @@ import { handle } from "hono/vercel";
 import { eq, count, and } from "drizzle-orm";
 import { JSDOM } from "jsdom";
 import { Readability } from "@mozilla/readability";
-import { generateObject, generateText } from "ai";
-import { createOpenAI } from "@ai-sdk/openai";
-
-const openai = createOpenAI({
-  baseURL: "https://gateway.ai.vercel.app/v1",
-  apiKey: process.env.VERCEL_AI_GATEWAY_API_KEY,
-});
+import { generateText, Output } from "ai";
 import { z } from "zod";
 import { auth } from "@/lib/auth";
 import { db, products, threads, keywords, redditSyncState } from "@/lib/db";
 import { fetchLatestPostId, batchFetchPosts, generateIdRange, base36ToNumber } from "@/lib/reddit/id-fetcher";
 import { buildMatcher, type KeywordEntry } from "@/lib/reddit/keyword-matcher";
+import { extractModel, keywordsModel, responseModel } from "@/lib/models";
 
 type Variables = {
   user: typeof auth.$Infer.Session.user | null;
@@ -23,6 +18,31 @@ type Variables = {
 };
 
 const app = new Hono<{ Variables: Variables }>().basePath("/api");
+
+const normalizeUrlInput = (value: string) => {
+  const trimmed = value.trim();
+  if (!trimmed) return "";
+  if (trimmed.startsWith("//")) {
+    return `https:${trimmed}`;
+  }
+  if (/^[a-zA-Z][a-zA-Z\d+.-]*:/.test(trimmed)) {
+    return trimmed;
+  }
+  return `https://${trimmed}`;
+};
+
+const httpUrlSchema = z.preprocess(
+  (value) => {
+    if (typeof value !== "string") return value;
+    return normalizeUrlInput(value);
+  },
+  z
+    .string()
+    .url()
+    .refine((value) => value.startsWith("http://") || value.startsWith("https://"), {
+      message: "URL must start with http:// or https://",
+    })
+);
 
 app.use("*", async (c, next) => {
   const session = await auth.api.getSession({ headers: c.req.raw.headers });
@@ -70,7 +90,7 @@ app.get("/products", async (c) => {
 });
 
 const createProductSchema = z.object({
-  url: z.string().url(),
+  url: httpUrlSchema,
   name: z.string().min(1),
   description: z.string(),
   targetAudience: z.string(),
@@ -180,7 +200,7 @@ app.post("/products", async (c) => {
 });
 
 const updateProductSchema = z.object({
-  url: z.string().url(),
+  url: httpUrlSchema,
   name: z.string().min(1),
   description: z.string(),
   targetAudience: z.string(),
@@ -256,11 +276,44 @@ const keywordsSchema = z.object({
         .min(2)
         .max(50)
         .regex(/^[a-zA-Z0-9\s-]+$/)
+        .refine(
+          (value) => {
+            const words = value.trim().split(/\s+/).filter(Boolean);
+            return words.length >= 2 && words.length <= 3;
+          },
+          { message: "Keyword must be 2-3 words" }
+        )
     )
     .min(1)
     .max(15)
-    .describe("Search keywords optimized for Reddit search"),
+    .describe("Short, specific 2-3 word keywords for Reddit search"),
 });
+
+const normalizeKeyword = (value: string) => value.replace(/\s+/g, " ").trim();
+const splitWords = (value: string) => normalizeKeyword(value).split(/\s+/).filter(Boolean);
+const ensureTwoWordMix = (keywords: string[]) => {
+  const unique = Array.from(new Set(keywords.map(normalizeKeyword).filter(Boolean)));
+  let twoWordCount = unique.filter((keyword) => splitWords(keyword).length === 2).length;
+  if (twoWordCount >= 4) return unique.slice(0, 15);
+
+  const adjusted = [...unique];
+  for (let i = 0; i < adjusted.length && twoWordCount < 4; i += 1) {
+    const words = splitWords(adjusted[i]);
+    if (words.length === 3) {
+      const candidate = words.slice(0, 2).join(" ");
+      if (candidate && !adjusted.includes(candidate)) {
+        adjusted[i] = candidate;
+        twoWordCount += 1;
+      }
+    }
+  }
+
+  return Array.from(new Set(adjusted)).slice(0, 15);
+};
+const toExactPhraseQuery = (value: string) => {
+  const normalized = normalizeKeyword(value).replace(/"/g, "");
+  return normalized ? `"${normalized}"` : "";
+};
 
 app.post("/extract", async (c) => {
   const user = c.get("user");
@@ -275,10 +328,14 @@ app.post("/extract", async (c) => {
     return c.json({ error: "URL is required" }, 400);
   }
 
+  const normalizedUrl = normalizeUrlInput(url);
   let parsedUrl: URL;
   try {
-    parsedUrl = new URL(url);
+    parsedUrl = new URL(normalizedUrl);
   } catch {
+    return c.json({ error: "Invalid URL format" }, 400);
+  }
+  if (parsedUrl.protocol !== "http:" && parsedUrl.protocol !== "https:") {
     return c.json({ error: "Invalid URL format" }, 400);
   }
 
@@ -309,27 +366,32 @@ app.post("/extract", async (c) => {
     return c.json({ error: "Could not extract content from URL" }, 400);
   }
 
-  const contentForLLM = `
+  const pageText = article.textContent.replace(/\s+/g, " ").trim();
+  const pageContext = `
 Title: ${article.title || "Unknown"}
 Site: ${article.siteName || parsedUrl.hostname}
 Content:
-${article.textContent.slice(0, 8000)}
+${pageText.slice(0, 8000)}
 `.trim();
+  const contentForLLM = pageContext;
 
   try {
-    const { object } = await generateObject({
-      model: openai("gpt-4o-mini"),
-      schema: productInfoSchema,
+    const { output } = await generateText({
+      model: extractModel,
+      output: Output.object({
+        schema: productInfoSchema,
+      }),
       prompt: `Extract product information from this webpage content. If any field cannot be determined, make a reasonable inference based on the available content.
 
 ${contentForLLM}`,
     });
 
     return c.json({
-      name: object.name,
-      description: object.description,
-      targetAudience: object.targetAudience,
+      name: output!.name,
+      description: output!.description,
+      targetAudience: output!.targetAudience,
       url: parsedUrl.toString(),
+      pageContext,
     });
   } catch (err) {
     return c.json(
@@ -346,36 +408,45 @@ app.post("/keywords/generate", async (c) => {
   }
 
   const body = await c.req.json();
-  const { name, description, targetAudience } = body;
+  const { name, description, targetAudience, pageContext } = body;
 
   if (!name || typeof name !== "string") {
     return c.json({ error: "Product name is required" }, 400);
   }
 
+  const trimmedPageContext = typeof pageContext === "string" ? pageContext.trim().slice(0, 6000) : "";
   const productContext = `
 Product: ${name}
 ${description ? `Description: ${description}` : ""}
 ${targetAudience ? `Target Audience: ${targetAudience}` : ""}
+${trimmedPageContext ? `Page Content (verbatim):\n${trimmedPageContext}` : ""}
 `.trim();
 
   try {
-    const { object } = await generateObject({
-      model: openai("gpt-4o-mini"),
-      schema: keywordsSchema,
-      prompt: `Generate 10 search keywords to find Reddit discussions where users are looking for solutions that this product could help with.
+    const { output } = await generateText({
+      model: keywordsModel,
+      output: Output.object({
+        schema: keywordsSchema,
+      }),
+      prompt: `Generate 10 short, specific keywords to find Reddit discussions where users are describing needs this product could help with.
 
 ${productContext}
 
 Requirements:
-- Keywords should match how people naturally describe their problems on Reddit
-- Include problem-focused phrases (e.g., "how to fix", "best way to", "help with")
-- Include product category terms and alternatives people might search for
+- Use exact words from the page content when possible
+- Use noun phrases (product category, audience, problem noun)
+- Avoid question phrases like "how to", "best way", "help with"
+- Avoid filler words and marketing language
 - Avoid brand names or overly specific product features
-- Each keyword should be 2-5 words for optimal Reddit search results
-- Focus on pain points and use cases rather than solutions`,
+- Prefer 2-word phrases; use 3 words only when needed for clarity (at least half should be 2 words)
+- No punctuation except hyphens`,
+      temperature: 0.2,
     });
 
-    return c.json({ keywords: object.keywords });
+    const normalizedKeywords = output!.keywords.map((keyword) => normalizeKeyword(keyword));
+    const balancedKeywords = ensureTwoWordMix(normalizedKeywords);
+
+    return c.json({ keywords: balancedKeywords });
   } catch (err) {
     return c.json(
       { error: `Failed to generate keywords: ${err instanceof Error ? err.message : "Unknown error"}` },
@@ -422,7 +493,9 @@ app.post("/threads/search", async (c) => {
 
     try {
       const searchUrl = new URL("https://www.reddit.com/search.json");
-      searchUrl.searchParams.set("q", keyword);
+      const phraseQuery = toExactPhraseQuery(keyword);
+      if (!phraseQuery) continue;
+      searchUrl.searchParams.set("q", phraseQuery);
       searchUrl.searchParams.set("sort", "new");
       searchUrl.searchParams.set("limit", "10");
       searchUrl.searchParams.set("t", "week");
@@ -600,7 +673,9 @@ app.post("/threads/refresh", async (c) => {
   for (const kw of productKeywords) {
     try {
       const searchUrl = new URL("https://www.reddit.com/search.json");
-      searchUrl.searchParams.set("q", kw.keyword);
+      const phraseQuery = toExactPhraseQuery(kw.keyword);
+      if (!phraseQuery) continue;
+      searchUrl.searchParams.set("q", phraseQuery);
       searchUrl.searchParams.set("sort", "new");
       searchUrl.searchParams.set("limit", "10");
       searchUrl.searchParams.set("t", "week");
@@ -713,7 +788,7 @@ Write only the response text, nothing else.`;
 
   try {
     const { text } = await generateText({
-      model: openai("gpt-4o-mini"),
+      model: responseModel,
       prompt,
       temperature: 0.7,
     });

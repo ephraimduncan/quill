@@ -2,7 +2,7 @@
 
 import Image from "next/image"
 import { IconLogout, IconUser } from "@tabler/icons-react"
-import { Button } from "@/components/ui/button"
+import { buttonVariants } from "@/components/ui/button"
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -12,6 +12,7 @@ import {
 } from "@/components/ui/dropdown-menu"
 import { Skeleton } from "@/components/ui/skeleton"
 import { useSession, signOut } from "@/lib/auth/client"
+import { cn } from "@/lib/utils"
 
 export function UserMenu() {
   const { data: session, isPending } = useSession()
@@ -30,23 +31,23 @@ export function UserMenu() {
 
   return (
     <DropdownMenu>
-      <DropdownMenuTrigger asChild>
-        <Button variant="ghost" size="icon" className="rounded-full">
-          {session.user.image ? (
-            <Image
-              src={session.user.image}
-              alt={session.user.name || "User avatar"}
-              width={32}
-              height={32}
-              className="size-8 rounded-full"
-              unoptimized
-            />
-          ) : (
-            <div className="size-8 rounded-full bg-primary flex items-center justify-center">
-              <IconUser className="size-4 text-primary-foreground" />
-            </div>
-          )}
-        </Button>
+      <DropdownMenuTrigger
+        className={cn(buttonVariants({ variant: "ghost", size: "icon" }), "rounded-full")}
+      >
+        {session.user.image ? (
+          <Image
+            src={session.user.image}
+            alt={session.user.name || "User avatar"}
+            width={32}
+            height={32}
+            className="size-8 rounded-full"
+            unoptimized
+          />
+        ) : (
+          <div className="size-8 rounded-full bg-primary flex items-center justify-center">
+            <IconUser className="size-4 text-primary-foreground" />
+          </div>
+        )}
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" sideOffset={8}>
         <div className="px-2 py-1.5">

@@ -14,7 +14,6 @@
     "db:studio": "drizzle-kit studio"
   },
   "dependencies": {
-    "@ai-sdk/openai": "^3.0.12",
     "@base-ui/react": "^1.1.0",
     "@libsql/client": "^0.17.0",
     "@mozilla/readability": "^0.6.0",

@@ -14,6 +14,7 @@ type ProductInfo = {
   description: string
   targetAudience: string
   url: string
+  pageContext?: string
 }
 
 type RedditThread = {
@@ -75,6 +76,18 @@ export default function SetupPage() {
   const [newKeyword, setNewKeyword] = useState("")
   const [selectedThreadId, setSelectedThreadId] = useState<string | null>(null)
 
+  const normalizeUrl = useCallback((value: string) => {
+    const trimmed = value.trim()
+    if (!trimmed) return ""
+    if (/^[a-zA-Z][a-zA-Z0-9+.-]*:\/\//.test(trimmed)) {
+      return trimmed
+    }
+    if (trimmed.startsWith("//")) {
+      return `https:${trimmed}`
+    }
+    return `https://${trimmed}`
+  }, [])
+
   useEffect(() => {
     if (!editProductId) return
 
@@ -117,10 +130,17 @@ export default function SetupPage() {
     setIsLoading(true)
 
     try {
+      const normalizedUrl = normalizeUrl(state.url)
+      if (!normalizedUrl) {
+        setError("Please enter a valid URL")
+        return
+      }
+
+      setState((prev) => ({ ...prev, url: normalizedUrl }))
       const response = await fetch("/api/extract", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ url: state.url }),
+        body: JSON.stringify({ url: normalizedUrl }),
       })
 
       const data = await response.json()
@@ -171,6 +191,7 @@ export default function SetupPage() {
           name: state.productInfo.name,
           description: state.productInfo.description,
           targetAudience: state.productInfo.targetAudience,
+          pageContext: state.productInfo.pageContext,
         }),
       })
 
@@ -244,16 +265,28 @@ export default function SetupPage() {
     }))
   }
 
+  const clearKeywords = () => {
+    setState((prev) => ({
+      ...prev,
+      keywords: [],
+      threads: [],
+    }))
+    setNewKeyword("")
+    setSelectedThreadId(null)
+    setError(null)
+  }
+
   const handleKeywordsSubmit = () => {
     if (isEditMode) {
       setState((prev) => ({ ...prev, step: 5 }))
       return
     }
+    setError(null)
     if (state.threads.length === 0) {
-      setError("No threads found. Add or modify keywords to find relevant discussions.")
+      setSelectedThreadId(null)
+      setState((prev) => ({ ...prev, step: 5 }))
       return
     }
-    setError(null)
     setSelectedThreadId(state.threads[0]?.redditThreadId || null)
     setState((prev) => ({ ...prev, step: 4 }))
   }
@@ -373,7 +406,8 @@ export default function SetupPage() {
               <div className="relative">
                 <Globe className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
                 <Input
-                  type="url"
+                  type="text"
+                  inputMode="url"
                   placeholder="https://yourproduct.com"
                   value={state.url}
                   onChange={(e) => setState((prev) => ({ ...prev, url: e.target.value }))}
@@ -549,6 +583,21 @@ export default function SetupPage() {
                       </div>
                     ))}
                   </div>
+
+                  <div className="flex items-center justify-between text-xs text-muted-foreground">
+                    <span>
+                      {state.keywords.length} keyword{state.keywords.length === 1 ? "" : "s"}
+                    </span>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      onClick={clearKeywords}
+                      disabled={state.keywords.length === 0}
+                    >
+                      Clear keywords
+                    </Button>
+                  </div>
                 </div>
 
                 <div className="space-y-2">
@@ -579,7 +628,8 @@ export default function SetupPage() {
                   ) : (
                     !isSearchingThreads && state.keywords.length > 0 && (
                       <div className="rounded-md border p-4 text-center text-sm text-muted-foreground">
-                        No threads found for these keywords
+                        No threads found yet. You can continue and we&apos;ll keep monitoring for
+                        matches.
                       </div>
                     )
                   )}

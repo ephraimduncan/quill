@@ -29,7 +29,7 @@ export function Sidebar({ open, onClose }: SidebarProps) {
       )}
       <aside
         className={cn(
-          "fixed top-0 left-0 z-50 h-full w-64 bg-sidebar border-r border-sidebar-border transform transition-transform duration-200 ease-in-out md:relative md:translate-x-0",
+          "fixed top-0 left-0 z-50 flex h-full w-64 flex-col bg-sidebar border-r border-sidebar-border transform transition-transform duration-200 ease-in-out md:relative md:translate-x-0",
           open ? "translate-x-0" : "-translate-x-full"
         )}
       >
@@ -39,7 +39,7 @@ export function Sidebar({ open, onClose }: SidebarProps) {
             <IconX className="size-5" />
           </Button>
         </div>
-        <nav className="p-4 space-y-1">
+        <nav className="flex-1 p-4 space-y-1">
           {navItems.map((item) => {
             const isActive = pathname === item.href || pathname.startsWith(`${item.href}/`)
             return (

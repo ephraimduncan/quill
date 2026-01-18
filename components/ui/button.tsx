@@ -1,5 +1,6 @@
 "use client"
 
+import * as React from "react"
 import { Button as ButtonPrimitive } from "@base-ui/react/button"
 import { cva, type VariantProps } from "class-variance-authority"
 
@@ -35,18 +36,34 @@ const buttonVariants = cva(
   }
 )
 
+interface ButtonProps
+  extends ButtonPrimitive.Props,
+    VariantProps<typeof buttonVariants> {
+  asChild?: boolean
+}
+
 function Button({
   className,
   variant = "default",
   size = "default",
+  asChild = false,
+  children,
   ...props
-}: ButtonPrimitive.Props & VariantProps<typeof buttonVariants>) {
+}: ButtonProps) {
+  // When asChild is true, use the child element as the render target
+  // This mimics Radix UI's asChild behavior using Base UI's render prop
+  const render = asChild && React.isValidElement(children) ? children : undefined
+
   return (
     <ButtonPrimitive
       data-slot="button"
       className={cn(buttonVariants({ variant, size, className }))}
+      render={render}
+      nativeButton={!render}
       {...props}
-    />
+    >
+      {asChild ? undefined : children}
+    </ButtonPrimitive>
   )
 }
 

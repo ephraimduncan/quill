@@ -14,7 +14,12 @@ function DropdownMenuPortal({ ...props }: MenuPrimitive.Portal.Props) {
   return <MenuPrimitive.Portal data-slot="dropdown-menu-portal" {...props} />
 }
 
-function DropdownMenuTrigger({ ...props }: MenuPrimitive.Trigger.Props) {
+function DropdownMenuTrigger({
+  asChild: _asChild,
+  ...props
+}: MenuPrimitive.Trigger.Props & { asChild?: boolean }) {
+  // Note: Base UI doesn't support asChild like Radix. Filter it out to prevent DOM warnings.
+  // Use className with buttonVariants() instead of wrapping with Button component.
   return <MenuPrimitive.Trigger data-slot="dropdown-menu-trigger" {...props} />
 }
 

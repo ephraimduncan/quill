@@ -14,9 +14,9 @@ export function AppShell({ children }: AppShellProps) {
   return (
     <div className="min-h-screen bg-background">
       <Header onMenuClick={() => setSidebarOpen(true)} />
-      <div className="flex">
+      <div className="flex h-[calc(100vh-3.5rem)]">
         <Sidebar open={sidebarOpen} onClose={() => setSidebarOpen(false)} />
-        <main className="flex-1 p-6">{children}</main>
+        <main className="flex-1 overflow-auto p-6">{children}</main>
       </div>
     </div>
   )

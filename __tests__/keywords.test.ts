@@ -17,6 +17,10 @@ const keywordsSchema = z.object({
         .min(2)
         .max(50)
         .regex(/^[a-zA-Z0-9\s-]+$/)
+        .refine((value) => {
+          const words = value.trim().split(/\s+/).filter(Boolean);
+          return words.length >= 2 && words.length <= 3;
+        })
     )
     .min(1)
     .max(15),
@@ -156,17 +160,24 @@ describe("keywords schema validation", () => {
     expect(result.success).toBe(false);
   });
 
-  test("rejects keywords that are too short", () => {
+  test("rejects keywords with only one word", () => {
     const result = keywordsSchema.safeParse({
-      keywords: ["a"],
+      keywords: ["productivity"],
     });
     expect(result.success).toBe(false);
   });
 
   test("accepts hyphenated keywords", () => {
     const result = keywordsSchema.safeParse({
-      keywords: ["self-improvement", "time-management"],
+      keywords: ["self-improvement tips", "time-management tools"],
     });
     expect(result.success).toBe(true);
+  });
+
+  test("rejects keywords longer than three words", () => {
+    const result = keywordsSchema.safeParse({
+      keywords: ["best project management software"],
+    });
+    expect(result.success).toBe(false);
   });
 });
