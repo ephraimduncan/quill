@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect, useCallback } from "react"
+import { useState, useEffect, useCallback, Suspense } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
 import { ArrowLeft, ArrowRight, ExternalLink, Globe, Plus, X } from "lucide-react"
 import { Button } from "@/components/ui/button"
@@ -55,7 +55,7 @@ function StepIndicator({ currentStep, totalSteps }: { currentStep: number; total
   )
 }
 
-export default function SetupPage() {
+function SetupPageContent() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const editProductId = searchParams.get("edit")
@@ -779,5 +779,24 @@ export default function SetupPage() {
         </Card>
       )}
     </div>
+  )
+}
+
+export default function SetupPage() {
+  return (
+    <Suspense fallback={
+      <div className="mx-auto py-8 px-4 max-w-2xl">
+        <Card>
+          <CardContent className="py-16">
+            <div className="flex flex-col items-center gap-4">
+              <Spinner size="md" />
+              <p className="text-muted-foreground">Loading...</p>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+    }>
+      <SetupPageContent />
+    </Suspense>
   )
 }
