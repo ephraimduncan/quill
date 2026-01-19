@@ -1,5 +1,5 @@
 const BASE36_CHARS = "0123456789abcdefghijklmnopqrstuvwxyz";
-const REDDIT_HEADERS = { "User-Agent": "RedditAgent/1.0" };
+const REDDIT_HEADERS = { "User-Agent": "QuillRedditAgent/1.0" };
 
 export function base36ToNumber(id: string): bigint {
   let result = 0n;

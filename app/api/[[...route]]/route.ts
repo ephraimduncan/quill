@@ -2,7 +2,7 @@ import { randomUUID } from "crypto";
 import { Hono } from "hono";
 import { handle } from "hono/vercel";
 import { eq, count, and } from "drizzle-orm";
-import { JSDOM } from "jsdom";
+import { parseHTML } from "linkedom";
 import { Readability } from "@mozilla/readability";
 import { generateText, Output } from "ai";
 import { z } from "zod";
@@ -343,7 +343,7 @@ async function searchRedditForKeyword(keyword: string): Promise<RedditThread[]> 
   searchUrl.searchParams.set("type", "link");
 
   const response = await fetch(searchUrl.toString(), {
-    headers: { "User-Agent": "RedditAgent/1.0" },
+    headers: { "User-Agent": "QuillRedditAgent/1.0" },
   });
 
   if (!response.ok) return [];
@@ -373,7 +373,7 @@ app.post("/extract", async (c) => {
   let html: string;
   try {
     const response = await fetch(parsedUrl.toString(), {
-      headers: { "User-Agent": "Mozilla/5.0 (compatible; RedditAgent/1.0; +https://reddit-agent.app)" },
+      headers: { "User-Agent": "Mozilla/5.0 (compatible; QuillRedditAgent/1.0)" },
     });
     if (!response.ok) return c.json({ error: `Failed to fetch URL: ${response.status}` }, 400);
     html = await response.text();
@@ -381,8 +381,8 @@ app.post("/extract", async (c) => {
     return c.json({ error: formatError("Failed to fetch URL", err) }, 400);
   }
 
-  const dom = new JSDOM(html, { url: parsedUrl.toString() });
-  const article = new Readability(dom.window.document).parse();
+  const { document } = parseHTML(html, parsedUrl.toString());
+  const article = new Readability(document).parse();
   if (!article || !article.textContent?.trim()) {
     return c.json({ error: "Could not extract content from URL" }, 400);
   }
