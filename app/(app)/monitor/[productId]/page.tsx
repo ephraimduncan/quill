@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback } from "react"
 import { useParams } from "next/navigation"
 import Link from "next/link"
-import { ExternalLink, X, RotateCcw, RefreshCw, Pencil } from "lucide-react"
+import { ExternalLink, X, RotateCcw, RefreshCw, Pencil, Sparkles } from "lucide-react"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Badge } from "@/components/ui/badge"
@@ -21,8 +21,10 @@ type Thread = {
   subreddit: string
   url: string
   createdUtc: number
+  discoveredAt: number
   status: "active" | "dismissed"
   isNew: boolean
+  matchedKeyword: string | null
 }
 
 type Product = {
@@ -59,11 +61,19 @@ function truncateText(text: string, maxLength: number): string {
 type ThreadMetadataProps = {
   subreddit: string
   createdUtc: number
+  matchedKeyword: string | null
 }
 
-function ThreadMetadata({ subreddit, createdUtc }: ThreadMetadataProps): React.ReactElement {
+function ThreadMetadata({ subreddit, createdUtc, matchedKeyword }: ThreadMetadataProps): React.ReactElement {
   return (
     <div className="text-xs text-muted-foreground mt-1">
+      {matchedKeyword && (
+        <span className="inline-flex items-center gap-1 mr-2">
+          <Badge variant="outline" className="text-xs px-1.5 py-0 h-4 font-normal">
+            {matchedKeyword}
+          </Badge>
+        </span>
+      )}
       r/{subreddit} · {formatRelativeTime(createdUtc)}
     </div>
   )
@@ -79,6 +89,8 @@ export default function MonitorPage() {
   const [selectedThreadId, setSelectedThreadId] = useState<string | null>(null)
   const [activeTab, setActiveTab] = useState("threads")
   const [isRefreshing, setIsRefreshing] = useState(false)
+  const [threadResponses, setThreadResponses] = useState<Record<string, string>>({})
+  const [threadCustomInstructions, setThreadCustomInstructions] = useState<Record<string, string>>({})
 
   const updateThread = useCallback((threadId: string, updates: Partial<Thread>) => {
     setProduct((prev) => {
@@ -131,14 +143,47 @@ export default function MonitorPage() {
   }, [product?.threads, updateThread])
 
   const handleDismiss = useCallback(async (threadId: string) => {
-    const res = await fetch(`/api/threads/${threadId}/dismiss`, { method: "POST" })
-    if (!res.ok) return
+    // Calculate next thread to select before updating
+    const currentActiveThreads = product?.threads.filter((t) => t.status === "active") || []
+    const currentIndex = currentActiveThreads.findIndex((t) => t.id === threadId)
+    let nextThreadId: string | null = null
+    
+    if (currentIndex !== -1) {
+      // If not the last thread, select the next one
+      if (currentIndex < currentActiveThreads.length - 1) {
+        nextThreadId = currentActiveThreads[currentIndex + 1].id
+      } 
+      // If it's the last thread, select the previous one
+      else if (currentIndex > 0) {
+        nextThreadId = currentActiveThreads[currentIndex - 1].id
+      }
+      // If it's the only thread, nextThreadId stays null
+    }
 
+    // Optimistic update - update UI immediately
+    const previousStatus = product?.threads.find((t) => t.id === threadId)?.status
     updateThread(threadId, { status: "dismissed" })
-    const remaining = product?.threads.filter(
-      (t) => t.status === "active" && t.id !== threadId
-    )
-    setSelectedThreadId(remaining?.[0]?.id ?? null)
+    setSelectedThreadId(nextThreadId)
+
+    // Handle API call in background, revert on failure
+    try {
+      const res = await fetch(`/api/threads/${threadId}/dismiss`, { method: "POST" })
+      if (!res.ok) {
+        // Revert optimistic update on failure
+        if (previousStatus) {
+          updateThread(threadId, { status: previousStatus })
+          setSelectedThreadId(threadId)
+        }
+        toast.error("Failed to dismiss thread")
+      }
+    } catch {
+      // Revert optimistic update on error
+      if (previousStatus) {
+        updateThread(threadId, { status: previousStatus })
+        setSelectedThreadId(threadId)
+      }
+      toast.error("Failed to connect to server")
+    }
   }, [product?.threads, updateThread])
 
   const handleRestore = useCallback(async (threadId: string) => {
@@ -214,7 +259,14 @@ export default function MonitorPage() {
     )
   }
 
-  const activeThreads = product.threads.filter((t) => t.status === "active")
+  const activeThreads = product.threads
+    .filter((t) => t.status === "active")
+    .sort((a, b) => {
+      // Sort by discovery time (newest discovered first)
+      // This keeps threads in stable positions - new threads naturally at top,
+      // and opened threads stay in their relative positions
+      return b.discoveredAt - a.discoveredAt
+    })
   const dismissedThreads = product.threads.filter((t) => t.status === "dismissed")
   const selectedThread = activeThreads.find((t) => t.id === selectedThreadId)
   const newThreadCount = activeThreads.filter((t) => t.isNew).length
@@ -291,21 +343,34 @@ export default function MonitorPage() {
                           key={thread.id}
                           type="button"
                           onClick={() => handleThreadSelect(thread.id)}
-                          className={`w-full text-left p-3 border-b last:border-b-0 hover:bg-muted/50 transition-colors ${
-                            selectedThreadId === thread.id ? "bg-muted" : ""
+                          className={`w-full text-left p-3 border-b last:border-b-0 transition-colors relative ${
+                            selectedThreadId === thread.id
+                              ? "bg-primary/10 border-l-4 border-l-primary font-medium"
+                              : "hover:bg-muted/50"
                           }`}
                         >
                           <div className="flex items-start gap-2">
                             <div className="font-medium text-sm line-clamp-2 flex-1">
                               {thread.title}
                             </div>
-                            {thread.isNew && (
-                              <Badge variant="default" className="shrink-0">
-                                New
-                              </Badge>
-                            )}
+                            <div className="flex items-center gap-1 shrink-0">
+                              {threadResponses[thread.id] && (
+                                <span title="Response generated">
+                                  <Sparkles className="size-3.5 text-primary" />
+                                </span>
+                              )}
+                              {thread.isNew && (
+                                <Badge variant="default" className="shrink-0">
+                                  New
+                                </Badge>
+                              )}
+                            </div>
                           </div>
-                          <ThreadMetadata subreddit={thread.subreddit} createdUtc={thread.createdUtc} />
+                          <ThreadMetadata 
+                            subreddit={thread.subreddit} 
+                            createdUtc={thread.createdUtc}
+                            matchedKeyword={thread.matchedKeyword}
+                          />
                         </button>
                       ))}
                     </div>
@@ -324,6 +389,14 @@ export default function MonitorPage() {
                           <div className="flex items-center gap-4 text-sm text-muted-foreground">
                             <span>r/{selectedThread.subreddit}</span>
                             <span>{formatRelativeTime(selectedThread.createdUtc)}</span>
+                            {selectedThread.matchedKeyword && (
+                              <span className="inline-flex items-center gap-1">
+                                <span className="text-xs">Matched keyword:</span>
+                                <Badge variant="outline" className="text-xs px-2 py-0.5 font-normal">
+                                  {selectedThread.matchedKeyword}
+                                </Badge>
+                              </span>
+                            )}
                           </div>
                           <div className="flex items-center gap-4">
                             <a
@@ -349,7 +422,6 @@ export default function MonitorPage() {
                         <div className="border-t pt-4 flex-1">
                           <h4 className="font-medium mb-3">Response</h4>
                           <ResponseEditorPanel
-                            key={selectedThread.id}
                             thread={{
                               title: selectedThread.title,
                               bodyPreview: selectedThread.bodyPreview,
@@ -357,8 +429,23 @@ export default function MonitorPage() {
                             }}
                             product={{
                               name: product.name,
+                              url: product.url,
                               description: product.description,
                               targetAudience: product.targetAudience,
+                            }}
+                            initialResponse={threadResponses[selectedThread.id] || ""}
+                            initialCustomInstructions={threadCustomInstructions[selectedThread.id] || ""}
+                            onResponseChange={(response) => {
+                              setThreadResponses((prev) => ({
+                                ...prev,
+                                [selectedThread.id]: response,
+                              }))
+                            }}
+                            onCustomInstructionsChange={(instructions) => {
+                              setThreadCustomInstructions((prev) => ({
+                                ...prev,
+                                [selectedThread.id]: instructions,
+                              }))
                             }}
                           />
                         </div>
@@ -400,7 +487,11 @@ export default function MonitorPage() {
                           <div className="font-medium text-sm line-clamp-2">
                             {thread.title}
                           </div>
-                          <ThreadMetadata subreddit={thread.subreddit} createdUtc={thread.createdUtc} />
+                          <ThreadMetadata 
+                            subreddit={thread.subreddit} 
+                            createdUtc={thread.createdUtc}
+                            matchedKeyword={thread.matchedKeyword}
+                          />
                         </div>
                         <div className="flex items-center gap-3 shrink-0">
                           <button

@@ -1,5 +1,9 @@
 const BASE36_CHARS = "0123456789abcdefghijklmnopqrstuvwxyz";
-const REDDIT_HEADERS = { "User-Agent": "QuillRedditAgent/1.0" };
+const REDDIT_HEADERS = {
+  "User-Agent": "Mozilla/5.0 (compatible; QuillRedditAgent/1.0; +https://reddit-agent.vercel.app)",
+  "Accept": "application/json",
+  "Accept-Language": "en-US,en;q=0.9",
+};
 
 export function base36ToNumber(id: string): bigint {
   let result = 0n;
@@ -41,6 +45,20 @@ export function generateIdRange(
   return ids;
 }
 
+// Generate IDs by incrementing from the last known ID (F5Bot approach)
+export function generateNextIdRange(
+  lastId: string,
+  count = 500
+): string[] {
+  const start = base36ToNumber(lastId);
+  const ids: string[] = [];
+  
+  for (let i = 1n; i <= BigInt(count); i++) {
+    ids.push(numberToBase36(start + i));
+  }
+  return ids;
+}
+
 export interface RedditPost {
   id: string;
   title: string;
@@ -57,7 +75,7 @@ interface RedditApiChild {
 
 export async function fetchLatestPostId(): Promise<string | null> {
   const res = await fetch(
-    "https://www.reddit.com/r/all/new.json?limit=1&raw_json=1",
+    "https://www.reddit.com/r/all/new/.json?limit=1&raw_json=1",
     { headers: REDDIT_HEADERS }
   );
   if (!res.ok) return null;
@@ -70,6 +88,7 @@ export async function batchFetchPosts(ids: string[]): Promise<RedditPost[]> {
   if (ids.length === 0) return [];
 
   const fullnames = ids.map((id) => `t3_${id}`).join(",");
+  // Use api.reddit.com as per F5Bot blog
   const res = await fetch(
     `https://api.reddit.com/api/info.json?id=${fullnames}&raw_json=1`,
     { headers: REDDIT_HEADERS }

@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { RefreshCw, Sparkles, Copy, Check } from "lucide-react"
 import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
@@ -15,6 +15,7 @@ type Thread = {
 
 type Product = {
   name: string
+  url: string
   description: string
   targetAudience: string
 }
@@ -22,18 +23,31 @@ type Product = {
 type ResponseEditorPanelProps = {
   thread: Thread
   product: Product
+  initialResponse?: string
+  initialCustomInstructions?: string
   onResponseChange?: (response: string) => void
+  onCustomInstructionsChange?: (instructions: string) => void
 }
 
 export function ResponseEditorPanel({
   thread,
   product,
+  initialResponse = "",
+  initialCustomInstructions = "",
   onResponseChange,
+  onCustomInstructionsChange,
 }: ResponseEditorPanelProps) {
-  const [response, setResponse] = useState("")
+  const [response, setResponse] = useState(initialResponse)
   const [isGenerating, setIsGenerating] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [copied, setCopied] = useState(false)
+  const [customInstructions, setCustomInstructions] = useState(initialCustomInstructions)
+
+  // Sync with initial values when thread changes
+  useEffect(() => {
+    setResponse(initialResponse)
+    setCustomInstructions(initialCustomInstructions)
+  }, [initialResponse, initialCustomInstructions])
 
   async function generateResponse() {
     setIsGenerating(true)
@@ -51,9 +65,11 @@ export function ResponseEditorPanel({
           },
           product: {
             name: product.name,
+            url: product.url,
             description: product.description,
             targetAudience: product.targetAudience,
           },
+          customInstructions: customInstructions,
         }),
       })
 
@@ -94,6 +110,19 @@ export function ResponseEditorPanel({
 
   return (
     <div className="space-y-4">
+      {(showGenerateButton || showEditor) && (
+        <Textarea
+          value={customInstructions}
+          onChange={(e) => {
+            const value = e.target.value
+            setCustomInstructions(value)
+            onCustomInstructionsChange?.(value)
+          }}
+          placeholder="Optional: Add specific instructions for this response..."
+          rows={3}
+          className="resize-none"
+        />
+      )}
       {showGenerateButton && (
         <Button onClick={generateResponse} className="w-full">
           <Sparkles className="size-4 mr-2" />

@@ -8,7 +8,7 @@ import { generateText, Output } from "ai";
 import { z } from "zod";
 import { auth } from "@/lib/auth";
 import { db, products, threads, keywords, redditSyncState } from "@/lib/db";
-import { fetchLatestPostId, batchFetchPosts, generateIdRange, base36ToNumber } from "@/lib/reddit/id-fetcher";
+import { batchFetchPosts, generateNextIdRange, base36ToNumber, type RedditPost } from "@/lib/reddit/id-fetcher";
 import { buildMatcher, type KeywordMatch } from "@/lib/reddit/keyword-matcher";
 import { extractModel, keywordsModel, responseModel } from "@/lib/models";
 
@@ -290,41 +290,24 @@ const keywordsSchema = z.object({
       z
         .string()
         .min(2)
-        .max(50)
-        .regex(/^[a-zA-Z0-9\s-]+$/)
+        .max(60)
         .refine(
           (value) => {
             const words = value.trim().split(/\s+/).filter(Boolean);
-            return words.length >= 2 && words.length <= 3;
+            return words.length >= 2 && words.length <= 4;
           },
-          { message: "Keyword must be 2-3 words" }
+          { message: "Keyword must be 2-4 words" }
         )
     )
     .min(1)
     .max(15)
-    .describe("Short, specific 2-3 word keywords for Reddit search"),
+    .describe("Search keywords including alternative phrases for Reddit search"),
 });
 
 const normalizeKeyword = (value: string) => value.replace(/\s+/g, " ").trim();
-const splitWords = (value: string) => normalizeKeyword(value).split(/\s+/).filter(Boolean);
-const ensureTwoWordMix = (keywords: string[]) => {
+const ensureKeywordBalance = (keywords: string[]) => {
   const unique = Array.from(new Set(keywords.map(normalizeKeyword).filter(Boolean)));
-  let twoWordCount = unique.filter((keyword) => splitWords(keyword).length === 2).length;
-  if (twoWordCount >= 4) return unique.slice(0, 15);
-
-  const adjusted = [...unique];
-  for (let i = 0; i < adjusted.length && twoWordCount < 4; i += 1) {
-    const words = splitWords(adjusted[i]);
-    if (words.length === 3) {
-      const candidate = words.slice(0, 2).join(" ");
-      if (candidate && !adjusted.includes(candidate)) {
-        adjusted[i] = candidate;
-        twoWordCount += 1;
-      }
-    }
-  }
-
-  return Array.from(new Set(adjusted)).slice(0, 15);
+  return unique.slice(0, 15);
 };
 const toExactPhraseQuery = (value: string) => {
   const normalized = normalizeKeyword(value).replace(/"/g, "");
@@ -434,22 +417,31 @@ app.post("/keywords/generate", async (c) => {
     const { output } = await generateText({
       model: keywordsModel,
       output: Output.object({ schema: keywordsSchema }),
-      prompt: `Generate 10 short, specific keywords to find Reddit discussions where users are describing needs this product could help with.
+      prompt: `Generate 10-15 search keywords to find Reddit users looking for a product like this one.
 
 ${productContext}
 
+Generate THREE types of keywords:
+
+1. PRODUCT CATEGORY (what it is): Generic terms describing the product type
+   Example for a calendar app: "calendar app", "scheduling tool", "time management app"
+
+2. ALTERNATIVE SEARCHES (most important): "[competitor] alternative" phrases - these catch users actively looking to switch
+   Example: "google calendar alternative", "notion calendar alternative", "calendly alternative"
+   
+3. PROBLEM/NEED PHRASES: What users search when looking for a solution
+   Example: "ai calendar", "smart scheduling", "calendar agent", "automated scheduling"
+
 Requirements:
-- Use exact words from the page content when possible
-- Use noun phrases (product category, audience, problem noun)
-- Avoid question phrases like "how to", "best way", "help with"
-- Avoid filler words and marketing language
-- Avoid brand names or overly specific product features
-- Prefer 2-word phrases; use 3 words only when needed for clarity (at least half should be 2 words)
-- No punctuation except hyphens`,
-      temperature: 0.2,
+- Focus heavily on "[competitor] alternative" keywords - these have the highest intent
+- Identify the main competitors in this space and generate alternative keywords for each
+- Use 2-3 word phrases
+- No marketing fluff, no brand name of the product itself
+- Think about what a frustrated user would type when looking for alternatives`,
+      temperature: 0.3,
     });
 
-    const balancedKeywords = ensureTwoWordMix(output!.keywords.map(normalizeKeyword));
+    const balancedKeywords = ensureKeywordBalance(output!.keywords.map(normalizeKeyword));
     return c.json({ keywords: balancedKeywords });
   } catch (err) {
     return c.json({ error: formatError("Failed to generate keywords", err) }, 500);
@@ -588,14 +580,16 @@ app.post("/threads/refresh", async (c) => {
 const generateResponseSchema = z.object({
   thread: z.object({
     title: z.string().min(1),
-    body: z.string(),
+    body: z.string().optional().default(""),
     subreddit: z.string().min(1),
   }),
   product: z.object({
     name: z.string().min(1),
-    description: z.string(),
-    targetAudience: z.string(),
+    url: z.string().min(1),
+    description: z.string().optional().default(""),
+    targetAudience: z.string().optional().default(""),
   }),
+  customInstructions: z.string().optional().default(""),
 });
 
 app.post("/response/generate", async (c) => {
@@ -604,9 +598,17 @@ app.post("/response/generate", async (c) => {
 
   const body = await c.req.json();
   const parsed = generateResponseSchema.safeParse(body);
-  if (!parsed.success) return c.json({ error: "Invalid request data" }, 400);
+  if (!parsed.success) {
+    return c.json(
+      { 
+        error: "Invalid request data", 
+        details: parsed.error.issues 
+      }, 
+      400
+    );
+  }
 
-  const { thread, product } = parsed.data;
+  const { thread, product, customInstructions } = parsed.data;
 
   const prompt = `You are helping a product maker engage authentically on Reddit. Write a helpful response to this Reddit post that naturally recommends their product as a solution.
 
@@ -617,18 +619,19 @@ ${thread.body ? `Content: ${thread.body}` : ""}
 
 PRODUCT TO RECOMMEND:
 Name: ${product.name}
+URL: ${product.url}
 ${product.description ? `Description: ${product.description}` : ""}
 ${product.targetAudience ? `Target Audience: ${product.targetAudience}` : ""}
-
+${customInstructions ? `\nUSER INSTRUCTIONS:\n${customInstructions}\n` : ""}
 GUIDELINES:
-- Write approximately 200 words (this is a soft limit)
-- Be genuinely helpful first - address the user's question or problem
+- Keep it SHORT: 80-100 words maximum. This is a strict limit.
+- Be genuinely helpful - briefly address the user's question or problem
 - Naturally mention the product as one solution, not as a hard sell
-- Match the tone and style typical of the subreddit
+- ALWAYS include the product URL in your response
+- Match the casual, conversational tone of Reddit
 - Do not include any disclosure like "I'm affiliated with" or "I work for"
-- Do not use marketing speak or excessive enthusiasm
-- Be conversational and authentic, like a helpful community member
-- If relevant, share a brief personal experience or use case
+- No marketing speak, no excessive enthusiasm, no fluff
+- Get to the point quickly
 
 Write only the response text, nothing else.`;
 
@@ -646,38 +649,12 @@ app.get("/cron/discover", async (c) => {
     return c.json({ error: "Unauthorized" }, 401);
   }
 
-  const latestPostId = await fetchLatestPostId();
-  if (!latestPostId) {
-    return c.json({ error: "Failed to fetch latest Reddit post ID" }, 500);
-  }
-
   const [syncState] = await db.select().from(redditSyncState).where(eq(redditSyncState.id, "global"));
-  const lastPostId = syncState?.lastPostId;
-
-  if (!lastPostId) {
-    const now = Math.floor(Date.now() / 1000);
-    await db.insert(redditSyncState).values({
-      id: "global",
-      lastPostId: latestPostId,
-      updatedAt: now,
-    });
-    return c.json({
-      success: true,
-      message: "Initialized sync state with latest post ID",
-      lastPostId: latestPostId,
-      postsProcessed: 0,
-      newThreadsFound: 0,
-    });
-  }
-
-  if (base36ToNumber(latestPostId) <= base36ToNumber(lastPostId)) {
-    return c.json({
-      success: true,
-      message: "No new posts since last sync",
-      postsProcessed: 0,
-      newThreadsFound: 0,
-    });
-  }
+  
+  // Initialize with a recent ID if first run (F5Bot approach - no listing endpoint needed)
+  // Set this to a recent Reddit post ID manually if needed
+  const DEFAULT_START_ID = "1i5abc"; // This should be updated with a recent post ID
+  const lastPostId = syncState?.lastPostId ?? DEFAULT_START_ID;
 
   const allKeywords = await db
     .select({ keyword: keywords.keyword, productId: keywords.productId })
@@ -685,10 +662,13 @@ app.get("/cron/discover", async (c) => {
 
   if (allKeywords.length === 0) {
     const now = Math.floor(Date.now() / 1000);
-    await db
-      .update(redditSyncState)
-      .set({ lastPostId: latestPostId, updatedAt: now })
-      .where(eq(redditSyncState.id, "global"));
+    if (!syncState) {
+      await db.insert(redditSyncState).values({
+        id: "global",
+        lastPostId: lastPostId,
+        updatedAt: now,
+      });
+    }
     return c.json({
       success: true,
       message: "No keywords configured",
@@ -703,8 +683,26 @@ app.get("/cron/discover", async (c) => {
   }));
   const matcher = buildMatcher(keywordEntries);
 
-  const idsToFetch = generateIdRange(lastPostId, latestPostId, 100);
-  const posts = await batchFetchPosts(idsToFetch);
+  // Generate next 500 IDs by incrementing (F5Bot approach)
+  const idsToFetch = generateNextIdRange(lastPostId, 500);
+  
+  // Batch fetch in chunks of 100 (F5Bot makes multiple parallel requests)
+  const allPosts: RedditPost[] = [];
+  for (let i = 0; i < idsToFetch.length; i += 100) {
+    const chunk = idsToFetch.slice(i, i + 100);
+    const posts = await batchFetchPosts(chunk);
+    allPosts.push(...posts);
+  }
+  
+  // Find highest ID that returned data
+  let highestId = lastPostId;
+  for (const post of allPosts) {
+    if (base36ToNumber(post.id) > base36ToNumber(highestId)) {
+      highestId = post.id;
+    }
+  }
+  
+  const posts = allPosts;
 
   const existingThreads = await db
     .select({ redditThreadId: threads.redditThreadId, productId: threads.productId })
@@ -760,10 +758,19 @@ app.get("/cron/discover", async (c) => {
     await db.insert(threads).values(threadsToInsert);
   }
 
-  await db
-    .update(redditSyncState)
-    .set({ lastPostId: latestPostId, updatedAt: now })
-    .where(eq(redditSyncState.id, "global"));
+  // Update sync state with highest found ID (F5Bot approach)
+  if (!syncState) {
+    await db.insert(redditSyncState).values({
+      id: "global",
+      lastPostId: highestId,
+      updatedAt: now,
+    });
+  } else {
+    await db
+      .update(redditSyncState)
+      .set({ lastPostId: highestId, updatedAt: now })
+      .where(eq(redditSyncState.id, "global"));
+  }
 
   return c.json({
     success: true,
