@@ -1,0 +1,19 @@
+{
+  "name": "reddit-agent-cron",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "bun build ./discover.ts --outfile=dist/discover.js --target=bun --minify",
+    "start": "bun run dist/discover.js",
+    "dev": "tsx watch discover.ts"
+  },
+  "dependencies": {
+    "@libsql/client": "^0.17.0",
+    "drizzle-orm": "^0.45.1"
+  },
+  "devDependencies": {
+    "tsx": "^4.19.0",
+    "typescript": "^5"
+  }
+}

@@ -74,31 +74,60 @@ interface RedditApiChild {
 }
 
 export async function fetchLatestPostId(): Promise<string | null> {
-  const res = await fetch(
-    "https://www.reddit.com/r/all/new/.json?limit=1&raw_json=1",
-    { headers: REDDIT_HEADERS }
-  );
-  if (!res.ok) return null;
+  const url = "https://www.reddit.com/r/all/new/.json?limit=1&raw_json=1";
+  console.log("[Reddit] Fetching latest post ID...");
+  
+  try {
+    const res = await fetch(url, { headers: REDDIT_HEADERS });
+    
+    if (!res.ok) {
+      const body = await res.text().catch(() => "");
+      console.error(`[Reddit] fetchLatestPostId failed: ${res.status} ${res.statusText}`, {
+        responseBody: body.slice(0, 500),
+      });
+      return null;
+    }
 
-  const data = await res.json();
-  return data?.data?.children?.[0]?.data?.id ?? null;
+    const data = await res.json();
+    const id = data?.data?.children?.[0]?.data?.id ?? null;
+    console.log(`[Reddit] Latest post ID: ${id}`);
+    return id;
+  } catch (error) {
+    console.error("[Reddit] fetchLatestPostId error:", error);
+    return null;
+  }
 }
 
 export async function batchFetchPosts(ids: string[]): Promise<RedditPost[]> {
   if (ids.length === 0) return [];
 
   const fullnames = ids.map((id) => `t3_${id}`).join(",");
-  // Use api.reddit.com as per F5Bot blog
-  const res = await fetch(
-    `https://api.reddit.com/api/info.json?id=${fullnames}&raw_json=1`,
-    { headers: REDDIT_HEADERS }
-  );
-  if (!res.ok) return [];
+  const url = `https://api.reddit.com/api/info.json?id=${fullnames}&raw_json=1`;
+  
+  console.log(`[Reddit] Fetching batch of ${ids.length} posts...`);
+  
+  try {
+    const res = await fetch(url, { headers: REDDIT_HEADERS });
+    
+    if (!res.ok) {
+      const body = await res.text().catch(() => "");
+      console.error(`[Reddit] batchFetchPosts failed: ${res.status} ${res.statusText}`, {
+        idsCount: ids.length,
+        responseBody: body.slice(0, 500),
+      });
+      return [];
+    }
 
-  const data = await res.json();
-  const children: RedditApiChild[] = data?.data?.children ?? [];
-
-  return children
-    .filter((child) => child.kind === "t3")
-    .map((child) => child.data);
+    const data = await res.json();
+    const children: RedditApiChild[] = data?.data?.children ?? [];
+    const posts = children
+      .filter((child) => child.kind === "t3")
+      .map((child) => child.data);
+    
+    console.log(`[Reddit] Got ${posts.length} posts from batch of ${ids.length}`);
+    return posts;
+  } catch (error) {
+    console.error("[Reddit] batchFetchPosts error:", error);
+    return [];
+  }
 }

@@ -644,139 +644,172 @@ Write only the response text, nothing else.`;
 });
 
 app.get("/cron/discover", async (c) => {
+  const startTime = Date.now();
+  console.log("[Cron] Starting discover job...");
+
   const authHeader = c.req.header("authorization");
   if (!process.env.CRON_SECRET || authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
+    console.error("[Cron] Unauthorized request");
     return c.json({ error: "Unauthorized" }, 401);
   }
 
-  const [syncState] = await db.select().from(redditSyncState).where(eq(redditSyncState.id, "global"));
-  
-  // Initialize with a recent ID if first run (F5Bot approach - no listing endpoint needed)
-  // Set this to a recent Reddit post ID manually if needed
-  const DEFAULT_START_ID = "1i5abc"; // This should be updated with a recent post ID
-  const lastPostId = syncState?.lastPostId ?? DEFAULT_START_ID;
+  try {
+    const [syncState] = await db.select().from(redditSyncState).where(eq(redditSyncState.id, "global"));
+    
+    // Initialize with a recent ID if first run (F5Bot approach - no listing endpoint needed)
+    // Set this to a recent Reddit post ID manually if needed
+    const DEFAULT_START_ID = "1i5abc"; // This should be updated with a recent post ID
+    const lastPostId = syncState?.lastPostId ?? DEFAULT_START_ID;
+    console.log(`[Cron] Starting from post ID: ${lastPostId}`);
 
-  const allKeywords = await db
-    .select({ keyword: keywords.keyword, productId: keywords.productId })
-    .from(keywords);
+    const allKeywords = await db
+      .select({ keyword: keywords.keyword, productId: keywords.productId })
+      .from(keywords);
 
-  if (allKeywords.length === 0) {
+    if (allKeywords.length === 0) {
+      console.log("[Cron] No keywords configured, skipping");
+      const now = Math.floor(Date.now() / 1000);
+      if (!syncState) {
+        await db.insert(redditSyncState).values({
+          id: "global",
+          lastPostId: lastPostId,
+          updatedAt: now,
+        });
+      }
+      return c.json({
+        success: true,
+        message: "No keywords configured",
+        postsProcessed: 0,
+        newThreadsFound: 0,
+      });
+    }
+
+    console.log(`[Cron] Monitoring ${allKeywords.length} keywords`);
+
+    const keywordEntries: KeywordMatch[] = allKeywords.map((k) => ({
+      keyword: k.keyword,
+      productId: k.productId,
+    }));
+    const matcher = buildMatcher(keywordEntries);
+
+    // Generate next 500 IDs by incrementing (F5Bot approach)
+    const idsToFetch = generateNextIdRange(lastPostId, 500);
+    console.log(`[Cron] Fetching ${idsToFetch.length} post IDs...`);
+    
+    // Batch fetch in chunks of 100 (F5Bot makes multiple parallel requests)
+    const allPosts: RedditPost[] = [];
+    for (let i = 0; i < idsToFetch.length; i += 100) {
+      const chunk = idsToFetch.slice(i, i + 100);
+      const posts = await batchFetchPosts(chunk);
+      allPosts.push(...posts);
+    }
+    
+    console.log(`[Cron] Fetched ${allPosts.length} posts from Reddit API`);
+    
+    // Warn if we got zero posts - likely indicates API blocking
+    if (allPosts.length === 0) {
+      console.warn("[Cron] WARNING: Got 0 posts from Reddit API - possible IP blocking or rate limiting");
+    }
+    
+    // Find highest ID that returned data
+    let highestId = lastPostId;
+    for (const post of allPosts) {
+      if (base36ToNumber(post.id) > base36ToNumber(highestId)) {
+        highestId = post.id;
+      }
+    }
+    
+    const posts = allPosts;
+
+    const existingThreads = await db
+      .select({ redditThreadId: threads.redditThreadId, productId: threads.productId })
+      .from(threads);
+    const existingSet = new Set(existingThreads.map((t) => `${t.productId}:${t.redditThreadId}`));
+
+    const sevenDaysAgo = Math.floor(Date.now() / 1000) - 7 * 24 * 60 * 60;
     const now = Math.floor(Date.now() / 1000);
+    const threadsToInsert: Array<{
+      id: string;
+      productId: string;
+      redditThreadId: string;
+      title: string;
+      bodyPreview: string;
+      subreddit: string;
+      url: string;
+      createdUtc: number;
+      discoveredAt: number;
+      status: "active";
+      isNew: true;
+      matchedKeyword: string;
+    }> = [];
+
+    for (const post of posts) {
+      if (post.created_utc < sevenDaysAgo) continue;
+
+      const textToMatch = `${post.title} ${post.selftext}`;
+      const matches = matcher.match(textToMatch);
+
+      for (const match of matches) {
+        const key = `${match.productId}:${post.id}`;
+        if (existingSet.has(key)) continue;
+        existingSet.add(key);
+
+        threadsToInsert.push({
+          id: randomUUID(),
+          productId: match.productId,
+          redditThreadId: post.id,
+          title: post.title,
+          bodyPreview: post.selftext.slice(0, 200),
+          subreddit: post.subreddit,
+          url: `https://reddit.com${post.permalink}`,
+          createdUtc: post.created_utc,
+          discoveredAt: now,
+          status: "active",
+          isNew: true,
+          matchedKeyword: match.keyword,
+        });
+      }
+    }
+
+    if (threadsToInsert.length > 0) {
+      await db.insert(threads).values(threadsToInsert);
+      console.log(`[Cron] Inserted ${threadsToInsert.length} new threads`);
+    }
+
+    // Update sync state with highest found ID (F5Bot approach)
     if (!syncState) {
       await db.insert(redditSyncState).values({
         id: "global",
-        lastPostId: lastPostId,
+        lastPostId: highestId,
         updatedAt: now,
       });
+    } else {
+      await db
+        .update(redditSyncState)
+        .set({ lastPostId: highestId, updatedAt: now })
+        .where(eq(redditSyncState.id, "global"));
     }
+
+    const duration = Date.now() - startTime;
+    console.log(`[Cron] Completed in ${duration}ms`, {
+      postsProcessed: posts.length,
+      newThreadsFound: threadsToInsert.length,
+      lastPostId: highestId,
+    });
+
     return c.json({
       success: true,
-      message: "No keywords configured",
-      postsProcessed: 0,
-      newThreadsFound: 0,
+      postsProcessed: posts.length,
+      newThreadsFound: threadsToInsert.length,
     });
+  } catch (error) {
+    const duration = Date.now() - startTime;
+    console.error(`[Cron] Fatal error after ${duration}ms:`, error);
+    return c.json({ 
+      error: "Internal error", 
+      details: error instanceof Error ? error.message : String(error) 
+    }, 500);
   }
-
-  const keywordEntries: KeywordMatch[] = allKeywords.map((k) => ({
-    keyword: k.keyword,
-    productId: k.productId,
-  }));
-  const matcher = buildMatcher(keywordEntries);
-
-  // Generate next 500 IDs by incrementing (F5Bot approach)
-  const idsToFetch = generateNextIdRange(lastPostId, 500);
-  
-  // Batch fetch in chunks of 100 (F5Bot makes multiple parallel requests)
-  const allPosts: RedditPost[] = [];
-  for (let i = 0; i < idsToFetch.length; i += 100) {
-    const chunk = idsToFetch.slice(i, i + 100);
-    const posts = await batchFetchPosts(chunk);
-    allPosts.push(...posts);
-  }
-  
-  // Find highest ID that returned data
-  let highestId = lastPostId;
-  for (const post of allPosts) {
-    if (base36ToNumber(post.id) > base36ToNumber(highestId)) {
-      highestId = post.id;
-    }
-  }
-  
-  const posts = allPosts;
-
-  const existingThreads = await db
-    .select({ redditThreadId: threads.redditThreadId, productId: threads.productId })
-    .from(threads);
-  const existingSet = new Set(existingThreads.map((t) => `${t.productId}:${t.redditThreadId}`));
-
-  const sevenDaysAgo = Math.floor(Date.now() / 1000) - 7 * 24 * 60 * 60;
-  const now = Math.floor(Date.now() / 1000);
-  const threadsToInsert: Array<{
-    id: string;
-    productId: string;
-    redditThreadId: string;
-    title: string;
-    bodyPreview: string;
-    subreddit: string;
-    url: string;
-    createdUtc: number;
-    discoveredAt: number;
-    status: "active";
-    isNew: true;
-    matchedKeyword: string;
-  }> = [];
-
-  for (const post of posts) {
-    if (post.created_utc < sevenDaysAgo) continue;
-
-    const textToMatch = `${post.title} ${post.selftext}`;
-    const matches = matcher.match(textToMatch);
-
-    for (const match of matches) {
-      const key = `${match.productId}:${post.id}`;
-      if (existingSet.has(key)) continue;
-      existingSet.add(key);
-
-      threadsToInsert.push({
-        id: randomUUID(),
-        productId: match.productId,
-        redditThreadId: post.id,
-        title: post.title,
-        bodyPreview: post.selftext.slice(0, 200),
-        subreddit: post.subreddit,
-        url: `https://reddit.com${post.permalink}`,
-        createdUtc: post.created_utc,
-        discoveredAt: now,
-        status: "active",
-        isNew: true,
-        matchedKeyword: match.keyword,
-      });
-    }
-  }
-
-  if (threadsToInsert.length > 0) {
-    await db.insert(threads).values(threadsToInsert);
-  }
-
-  // Update sync state with highest found ID (F5Bot approach)
-  if (!syncState) {
-    await db.insert(redditSyncState).values({
-      id: "global",
-      lastPostId: highestId,
-      updatedAt: now,
-    });
-  } else {
-    await db
-      .update(redditSyncState)
-      .set({ lastPostId: highestId, updatedAt: now })
-      .where(eq(redditSyncState.id, "global"));
-  }
-
-  return c.json({
-    success: true,
-    postsProcessed: posts.length,
-    newThreadsFound: threadsToInsert.length,
-  });
 });
 
 export const GET = handle(app);
