@@ -656,6 +656,7 @@ GUIDELINES:
 - Do not include any disclosure like "I'm affiliated with" or "I work for"
 - No marketing speak, no excessive enthusiasm, no fluff
 - Get to the point quickly
+- Do not use markdown formatting (no **bold**, *italic*, [links](url), etc.)
 
 Write only the response text, nothing else.`;
 
