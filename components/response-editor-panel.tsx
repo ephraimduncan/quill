@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import { RefreshCw, Sparkles, Copy, Check } from "lucide-react"
+import { RefreshCw, Sparkles, Copy, Check, Search } from "lucide-react"
 import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
@@ -59,6 +59,7 @@ export function ResponseEditorPanel({
 }: ResponseEditorPanelProps) {
   const [response, setResponse] = useState(initialResponse)
   const [isGenerating, setIsGenerating] = useState(false)
+  const [isCheckingRelevance, setIsCheckingRelevance] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [copied, setCopied] = useState(false)
   const [customInstructions, setCustomInstructions] = useState(initialCustomInstructions)
@@ -71,45 +72,91 @@ export function ResponseEditorPanel({
     setRelevance(initialRelevance)
   }, [initialResponse, initialCustomInstructions, initialRelevance])
 
+  function getPayloads() {
+    return {
+      thread: {
+        title: thread.title,
+        body: thread.bodyPreview,
+        subreddit: thread.subreddit,
+      },
+      product: {
+        name: product.name,
+        url: product.url,
+        description: product.description,
+        targetAudience: product.targetAudience,
+      },
+    }
+  }
+
+  async function checkRelevance() {
+    setIsCheckingRelevance(true)
+    setError(null)
+
+    const { thread: threadPayload, product: productPayload } = getPayloads()
+
+    try {
+      const res = await fetch("/api/response/relevance", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          thread: threadPayload,
+          product: productPayload,
+        }),
+      })
+
+      const data = await res.json()
+
+      if (!res.ok) {
+        setError(data.error || "Failed to check relevance")
+        return
+      }
+
+      if (typeof data.relevance === "number") {
+        setRelevance(data.relevance)
+        onRelevanceChange?.(data.relevance)
+      }
+    } catch {
+      setError("Failed to connect to server")
+    } finally {
+      setIsCheckingRelevance(false)
+    }
+  }
+
   async function generateResponse() {
     setIsGenerating(true)
     setError(null)
 
-    const threadPayload = {
-      title: thread.title,
-      body: thread.bodyPreview,
-      subreddit: thread.subreddit,
-    }
-    const productPayload = {
-      name: product.name,
-      url: product.url,
-      description: product.description,
-      targetAudience: product.targetAudience,
-    }
+    const { thread: threadPayload, product: productPayload } = getPayloads()
+    const needsRelevanceCheck = relevance === null
 
     try {
+      const responsePromise = fetch("/api/response/generate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          thread: threadPayload,
+          product: productPayload,
+          customInstructions: customInstructions,
+        }),
+      })
+
+      const relevancePromise = needsRelevanceCheck
+        ? fetch("/api/response/relevance", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              thread: threadPayload,
+              product: productPayload,
+            }),
+          })
+        : null
+
       const [responseRes, relevanceRes] = await Promise.all([
-        fetch("/api/response/generate", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            thread: threadPayload,
-            product: productPayload,
-            customInstructions: customInstructions,
-          }),
-        }),
-        fetch("/api/response/relevance", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            thread: threadPayload,
-            product: productPayload,
-          }),
-        }),
+        responsePromise,
+        relevancePromise,
       ])
 
       const responseData = await responseRes.json()
-      const relevanceData = await relevanceRes.json()
 
       if (!responseRes.ok) {
         setError(responseData.error || "Failed to generate response")
@@ -119,9 +166,12 @@ export function ResponseEditorPanel({
       setResponse(responseData.response)
       onResponseChange?.(responseData.response)
 
-      if (relevanceRes.ok && typeof relevanceData.relevance === "number") {
-        setRelevance(relevanceData.relevance)
-        onRelevanceChange?.(relevanceData.relevance)
+      if (relevanceRes) {
+        const relevanceData = await relevanceRes.json()
+        if (relevanceRes.ok && typeof relevanceData.relevance === "number") {
+          setRelevance(relevanceData.relevance)
+          onRelevanceChange?.(relevanceData.relevance)
+        }
       }
     } catch {
       setError("Failed to connect to server")
@@ -143,15 +193,16 @@ export function ResponseEditorPanel({
   }
 
   const hasResponse = response.length > 0
-  const showGenerateButton = !hasResponse && !isGenerating
-  const showEditor = hasResponse && !isGenerating
+  const isLoading = isGenerating || isCheckingRelevance
+  const showInitialState = !hasResponse && !isLoading
+  const showEditor = hasResponse && !isLoading
 
   const CopyIcon = copied ? Check : Copy
   const copyLabel = copied ? "Copied" : "Copy"
 
   return (
     <div className="space-y-4">
-      {(showGenerateButton || showEditor) && (
+      {(showInitialState || showEditor) && (
         <Textarea
           value={customInstructions}
           onChange={(e) => {
@@ -164,11 +215,34 @@ export function ResponseEditorPanel({
           className="resize-none"
         />
       )}
-      {showGenerateButton && (
-        <Button onClick={generateResponse} className="w-full">
-          <Sparkles className="size-4 mr-2" />
-          Generate Response
-        </Button>
+
+      {showInitialState && (
+        <>
+          {relevance !== null && (
+            <div className="flex items-center">
+              <RelevanceBadge relevance={relevance} />
+            </div>
+          )}
+          <div className="flex gap-2">
+            {relevance === null && (
+              <Button variant="outline" onClick={checkRelevance}>
+                <Search className="size-4 mr-2" />
+                Check Relevance
+              </Button>
+            )}
+            <Button onClick={generateResponse} className="flex-1">
+              <Sparkles className="size-4 mr-2" />
+              Generate Response
+            </Button>
+          </div>
+        </>
+      )}
+
+      {isCheckingRelevance && (
+        <div className="flex items-center justify-center py-8">
+          <Spinner size="md" className="mr-2" />
+          <span className="text-muted-foreground">Checking relevance...</span>
+        </div>
       )}
 
       {isGenerating && (
