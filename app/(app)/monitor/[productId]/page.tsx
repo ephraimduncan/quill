@@ -25,6 +25,9 @@ type Thread = {
   status: "active" | "dismissed"
   isNew: boolean
   matchedKeyword: string | null
+  generatedResponse: string | null
+  customInstructions: string | null
+  relevanceScore: number | null
 }
 
 type Product = {
@@ -117,9 +120,22 @@ export default function MonitorPage() {
         }
 
         setProduct(productData)
-        const activeThreads = productData.threads.filter(
-          (t: Thread) => t.status === "active"
-        )
+
+        const responses: Record<string, string> = {}
+        const instructions: Record<string, string> = {}
+        const relevance: Record<string, number> = {}
+        for (const t of productData.threads as Thread[]) {
+          if (t.generatedResponse) responses[t.id] = t.generatedResponse
+          if (t.customInstructions) instructions[t.id] = t.customInstructions
+          if (t.relevanceScore !== null) relevance[t.id] = t.relevanceScore
+        }
+        setThreadResponses(responses)
+        setThreadCustomInstructions(instructions)
+        setThreadRelevance(relevance)
+
+        const activeThreads = productData.threads
+          .filter((t: Thread) => t.status === "active")
+          .sort((a: Thread, b: Thread) => b.discoveredAt - a.discoveredAt)
         if (activeThreads.length > 0) {
           setSelectedThreadId(activeThreads[0].id)
         }
@@ -133,19 +149,20 @@ export default function MonitorPage() {
     fetchData()
   }, [productId])
 
-  const handleThreadSelect = useCallback(async (threadId: string) => {
+  const handleThreadSelect = useCallback((threadId: string) => {
     setSelectedThreadId(threadId)
 
     const thread = product?.threads.find((t) => t.id === threadId)
     if (thread?.isNew) {
-      await fetch(`/api/threads/${threadId}/mark-read`, { method: "POST" })
       updateThread(threadId, { isNew: false })
+      fetch(`/api/threads/${threadId}/mark-read`, { method: "POST" })
     }
   }, [product?.threads, updateThread])
 
   const handleDismiss = useCallback(async (threadId: string) => {
     // Calculate next thread to select before updating
-    const currentActiveThreads = product?.threads.filter((t) => t.status === "active") || []
+    const currentActiveThreads = (product?.threads.filter((t) => t.status === "active") || [])
+      .sort((a, b) => b.discoveredAt - a.discoveredAt)
     const currentIndex = currentActiveThreads.findIndex((t) => t.id === threadId)
     let nextThreadId: string | null = null
     
@@ -423,6 +440,7 @@ export default function MonitorPage() {
                         <div className="border-t pt-4 flex-1">
                           <h4 className="font-medium mb-3">Response</h4>
                           <ResponseEditorPanel
+                            threadId={selectedThread.id}
                             thread={{
                               title: selectedThread.title,
                               bodyPreview: selectedThread.bodyPreview,
@@ -454,6 +472,12 @@ export default function MonitorPage() {
                                 ...prev,
                                 [selectedThread.id]: relevance,
                               }))
+                            }}
+                            onMarkRead={() => {
+                              if (selectedThread.isNew) {
+                                updateThread(selectedThread.id, { isNew: false })
+                                fetch(`/api/threads/${selectedThread.id}/mark-read`, { method: "POST" })
+                              }
                             }}
                           />
                         </div>

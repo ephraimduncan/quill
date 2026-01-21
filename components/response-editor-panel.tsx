@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import { RefreshCw, Sparkles, Copy, Check, Search } from "lucide-react"
+import { RefreshCw, Sparkles, Copy, Check } from "lucide-react"
 import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
@@ -22,6 +22,7 @@ type Product = {
 }
 
 type ResponseEditorPanelProps = {
+  threadId: string
   thread: Thread
   product: Product
   initialResponse?: string
@@ -30,6 +31,7 @@ type ResponseEditorPanelProps = {
   onResponseChange?: (response: string) => void
   onCustomInstructionsChange?: (instructions: string) => void
   onRelevanceChange?: (relevance: number) => void
+  onMarkRead?: () => void
 }
 
 function RelevanceBadge({ relevance }: { relevance: number }) {
@@ -48,6 +50,7 @@ function RelevanceBadge({ relevance }: { relevance: number }) {
 }
 
 export function ResponseEditorPanel({
+  threadId,
   thread,
   product,
   initialResponse = "",
@@ -56,10 +59,10 @@ export function ResponseEditorPanel({
   onResponseChange,
   onCustomInstructionsChange,
   onRelevanceChange,
+  onMarkRead,
 }: ResponseEditorPanelProps) {
   const [response, setResponse] = useState(initialResponse)
   const [isGenerating, setIsGenerating] = useState(false)
-  const [isCheckingRelevance, setIsCheckingRelevance] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [copied, setCopied] = useState(false)
   const [customInstructions, setCustomInstructions] = useState(initialCustomInstructions)
@@ -71,6 +74,28 @@ export function ResponseEditorPanel({
     setCustomInstructions(initialCustomInstructions)
     setRelevance(initialRelevance)
   }, [initialResponse, initialCustomInstructions, initialRelevance])
+
+  // Auto-fetch relevance when thread is viewed and has no score
+  useEffect(() => {
+    if (initialRelevance !== null) return
+
+    const { thread: threadPayload, product: productPayload } = getPayloads()
+
+    fetch("/api/response/relevance", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ thread: threadPayload, product: productPayload }),
+    })
+      .then((res) => res.json())
+      .then((data) => {
+        if (typeof data.relevance === "number") {
+          setRelevance(data.relevance)
+          onRelevanceChange?.(data.relevance)
+          saveToServer({ relevanceScore: data.relevance })
+        }
+      })
+      .catch(() => {})
+  }, [threadId])
 
   function getPayloads() {
     return {
@@ -88,38 +113,16 @@ export function ResponseEditorPanel({
     }
   }
 
-  async function checkRelevance() {
-    setIsCheckingRelevance(true)
-    setError(null)
-
-    const { thread: threadPayload, product: productPayload } = getPayloads()
-
-    try {
-      const res = await fetch("/api/response/relevance", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          thread: threadPayload,
-          product: productPayload,
-        }),
-      })
-
-      const data = await res.json()
-
-      if (!res.ok) {
-        setError(data.error || "Failed to check relevance")
-        return
-      }
-
-      if (typeof data.relevance === "number") {
-        setRelevance(data.relevance)
-        onRelevanceChange?.(data.relevance)
-      }
-    } catch {
-      setError("Failed to connect to server")
-    } finally {
-      setIsCheckingRelevance(false)
-    }
+  function saveToServer(data: {
+    generatedResponse?: string
+    customInstructions?: string
+    relevanceScore?: number
+  }) {
+    fetch(`/api/threads/${threadId}/response`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(data),
+    })
   }
 
   async function generateResponse() {
@@ -166,13 +169,24 @@ export function ResponseEditorPanel({
       setResponse(responseData.response)
       onResponseChange?.(responseData.response)
 
+      const saveData: { generatedResponse: string; customInstructions?: string; relevanceScore?: number } = {
+        generatedResponse: responseData.response,
+      }
+      if (customInstructions) {
+        saveData.customInstructions = customInstructions
+      }
+
       if (relevanceRes) {
         const relevanceData = await relevanceRes.json()
         if (relevanceRes.ok && typeof relevanceData.relevance === "number") {
           setRelevance(relevanceData.relevance)
           onRelevanceChange?.(relevanceData.relevance)
+          saveData.relevanceScore = relevanceData.relevance
         }
       }
+
+      saveToServer(saveData)
+      onMarkRead?.()
     } catch {
       setError("Failed to connect to server")
     } finally {
@@ -193,9 +207,8 @@ export function ResponseEditorPanel({
   }
 
   const hasResponse = response.length > 0
-  const isLoading = isGenerating || isCheckingRelevance
-  const showInitialState = !hasResponse && !isLoading
-  const showEditor = hasResponse && !isLoading
+  const showInitialState = !hasResponse && !isGenerating
+  const showEditor = hasResponse && !isGenerating
 
   const CopyIcon = copied ? Check : Copy
   const copyLabel = copied ? "Copied" : "Copy"
@@ -223,26 +236,11 @@ export function ResponseEditorPanel({
               <RelevanceBadge relevance={relevance} />
             </div>
           )}
-          <div className="flex gap-2">
-            {relevance === null && (
-              <Button variant="outline" onClick={checkRelevance}>
-                <Search className="size-4 mr-2" />
-                Check Relevance
-              </Button>
-            )}
-            <Button onClick={generateResponse} className="flex-1">
-              <Sparkles className="size-4 mr-2" />
-              Generate Response
-            </Button>
-          </div>
+          <Button onClick={generateResponse}>
+            <Sparkles className="size-4 mr-2" />
+            Generate Response
+          </Button>
         </>
-      )}
-
-      {isCheckingRelevance && (
-        <div className="flex items-center justify-center py-8">
-          <Spinner size="md" className="mr-2" />
-          <span className="text-muted-foreground">Checking relevance...</span>
-        </div>
       )}
 
       {isGenerating && (

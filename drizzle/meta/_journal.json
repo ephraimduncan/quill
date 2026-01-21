@@ -8,6 +8,13 @@
       "when": 1768672889028,
       "tag": "0000_violet_roughhouse",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "6",
+      "when": 1769027678982,
+      "tag": "0001_premium_serpent_society",
+      "breakpoints": true
     }
   ]
 }

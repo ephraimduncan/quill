@@ -515,6 +515,41 @@ app.post("/threads/:id/mark-read", async (c) => {
   return c.json({ success: true });
 });
 
+const saveResponseSchema = z.object({
+  generatedResponse: z.string().optional(),
+  customInstructions: z.string().optional(),
+  relevanceScore: z.number().min(0).max(100).optional(),
+});
+
+app.post("/threads/:id/response", async (c) => {
+  const user = c.get("user");
+  if (!user) return c.json({ error: "Unauthorized" }, 401);
+
+  const thread = await findThreadWithOwnership(user.id, c.req.param("id"));
+  if (!thread) return c.json({ error: "Thread not found" }, 404);
+
+  const body = await c.req.json();
+  const parsed = saveResponseSchema.safeParse(body);
+  if (!parsed.success) return c.json({ error: "Invalid request data" }, 400);
+
+  const updates: Record<string, string | number | null> = {};
+  if (parsed.data.generatedResponse !== undefined) {
+    updates.generatedResponse = parsed.data.generatedResponse || null;
+  }
+  if (parsed.data.customInstructions !== undefined) {
+    updates.customInstructions = parsed.data.customInstructions || null;
+  }
+  if (parsed.data.relevanceScore !== undefined) {
+    updates.relevanceScore = parsed.data.relevanceScore;
+  }
+
+  if (Object.keys(updates).length > 0) {
+    await db.update(threads).set(updates).where(eq(threads.id, thread.id));
+  }
+
+  return c.json({ success: true });
+});
+
 app.post("/threads/:id/dismiss", async (c) => {
   const user = c.get("user");
   if (!user) return c.json({ error: "Unauthorized" }, 401);

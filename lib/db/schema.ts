@@ -36,6 +36,9 @@ export const threads = sqliteTable("threads", {
   commentBody: text("comment_body"),
   parentPostId: text("parent_post_id"),
   parentPostTitle: text("parent_post_title"),
+  generatedResponse: text("generated_response"),
+  customInstructions: text("custom_instructions"),
+  relevanceScore: integer("relevance_score"),
 });
 
 export const redditSyncState = sqliteTable("reddit_sync_state", {
