@@ -13,6 +13,11 @@ function createNode(): TrieNode {
   return { children: new Map(), fail: null, output: [] };
 }
 
+function isWordBoundary(char: string | undefined): boolean {
+  if (!char) return true;
+  return /[^a-z0-9]/.test(char);
+}
+
 export class AhoCorasick {
   private root: TrieNode;
 
@@ -68,14 +73,24 @@ export class AhoCorasick {
     const results: KeywordMatch[] = [];
     const seen = new Set<string>();
     let node = this.root;
+    const lowerText = text.toLowerCase();
 
-    for (const char of text.toLowerCase()) {
+    for (let i = 0; i < lowerText.length; i++) {
+      const char = lowerText[i];
       while (node !== this.root && !node.children.has(char)) {
         node = node.fail!;
       }
       node = node.children.get(char) ?? this.root;
 
       for (const match of node.output) {
+        const matchStart = i - match.keyword.length + 1;
+        const charBefore = lowerText[matchStart - 1];
+        const charAfter = lowerText[i + 1];
+
+        if (!isWordBoundary(charBefore) || !isWordBoundary(charAfter)) {
+          continue;
+        }
+
         const key = `${match.productId}:${match.keyword}`;
         if (!seen.has(key)) {
           seen.add(key);
