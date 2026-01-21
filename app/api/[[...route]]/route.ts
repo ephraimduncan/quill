@@ -659,14 +659,14 @@ ${product.description ? `Description: ${product.description}` : ""}
 ${product.targetAudience ? `Target Audience: ${product.targetAudience}` : ""}
 ${customInstructions ? `\nUSER INSTRUCTIONS:\n${customInstructions}\n` : ""}
 GUIDELINES:
-- Keep it SHORT: 80-100 words maximum. This is a strict limit.
-- Be genuinely helpful - briefly address the user's question or problem
-- Naturally mention the product as one solution, not as a hard sell
-- ALWAYS include the product URL in your response
-- Match the casual, conversational tone of Reddit
-- Do not include any disclosure like "I'm affiliated with" or "I work for"
+- Keep it SHORT: 80-100 words maximum. Strict limit.
+- Be genuinely helpful - address the user's question/problem, or add value to the discussion
+- Weave the product mention naturally INTO a relevant sentence, not at the end
+- Reference the URL as a bare domain (productname.com) not https://productname.com
+- Use 2-3 short paragraphs with blank lines between them - never one wall of text
+- Match Reddit's casual tone - sound like a real person sharing a helpful tip
+- No disclosure ("I'm affiliated with", "I work for")
 - No marketing speak, no excessive enthusiasm, no fluff
-- Get to the point quickly
 - Do not use markdown formatting (no **bold**, *italic*, [links](url), etc.)
 
 Write only the response text, nothing else.`;
