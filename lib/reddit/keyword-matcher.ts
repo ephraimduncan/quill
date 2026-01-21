@@ -3,98 +3,41 @@ export interface KeywordMatch {
   productId: string;
 }
 
-interface TrieNode {
-  children: Map<string, TrieNode>;
-  fail: TrieNode | null;
-  output: KeywordMatch[];
+interface KeywordEntry extends KeywordMatch {
+  words: string[];
+  patterns: RegExp[];
 }
 
-function createNode(): TrieNode {
-  return { children: new Map(), fail: null, output: [] };
+function createWordPattern(word: string): RegExp {
+  const escaped = word.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return new RegExp(`\\b${escaped}s?\\b`, "i");
 }
 
-function isWordBoundary(char: string | undefined): boolean {
-  if (!char) return true;
-  return /[^a-z0-9]/.test(char);
-}
+export class KeywordMatcher {
+  private entries: KeywordEntry[];
 
-export class AhoCorasick {
-  private root: TrieNode;
-
-  constructor(entries: KeywordMatch[]) {
-    this.root = createNode();
-    this.buildTrie(entries);
-    this.buildFailureLinks();
-  }
-
-  private buildTrie(entries: KeywordMatch[]): void {
-    for (const entry of entries) {
-      let node = this.root;
-      for (const char of entry.keyword.toLowerCase()) {
-        let child = node.children.get(char);
-        if (!child) {
-          child = createNode();
-          node.children.set(char, child);
-        }
-        node = child;
-      }
-      node.output.push(entry);
-    }
-  }
-
-  private buildFailureLinks(): void {
-    const queue: TrieNode[] = [];
-    this.root.fail = this.root;
-
-    for (const child of this.root.children.values()) {
-      child.fail = this.root;
-      queue.push(child);
-    }
-
-    while (queue.length > 0) {
-      const current = queue.shift()!;
-
-      for (const [char, child] of current.children) {
-        queue.push(child);
-
-        let fail = current.fail!;
-        while (fail !== this.root && !fail.children.has(char)) {
-          fail = fail.fail!;
-        }
-
-        const failChild = fail.children.get(char);
-        child.fail = failChild && failChild !== child ? failChild : this.root;
-        child.output.push(...child.fail.output);
-      }
-    }
+  constructor(keywords: KeywordMatch[]) {
+    this.entries = keywords.map((k) => {
+      const words = k.keyword.toLowerCase().split(/\s+/).filter(Boolean);
+      return {
+        ...k,
+        words,
+        patterns: words.map(createWordPattern),
+      };
+    });
   }
 
   match(text: string): KeywordMatch[] {
     const results: KeywordMatch[] = [];
     const seen = new Set<string>();
-    let node = this.root;
-    const lowerText = text.toLowerCase();
 
-    for (let i = 0; i < lowerText.length; i++) {
-      const char = lowerText[i];
-      while (node !== this.root && !node.children.has(char)) {
-        node = node.fail!;
-      }
-      node = node.children.get(char) ?? this.root;
-
-      for (const match of node.output) {
-        const matchStart = i - match.keyword.length + 1;
-        const charBefore = lowerText[matchStart - 1];
-        const charAfter = lowerText[i + 1];
-
-        if (!isWordBoundary(charBefore) || !isWordBoundary(charAfter)) {
-          continue;
-        }
-
-        const key = `${match.productId}:${match.keyword}`;
+    for (const entry of this.entries) {
+      const allWordsFound = entry.patterns.every((pattern) => pattern.test(text));
+      if (allWordsFound) {
+        const key = `${entry.productId}:${entry.keyword}`;
         if (!seen.has(key)) {
           seen.add(key);
-          results.push(match);
+          results.push({ keyword: entry.keyword, productId: entry.productId });
         }
       }
     }
@@ -103,6 +46,6 @@ export class AhoCorasick {
   }
 }
 
-export function buildMatcher(entries: KeywordMatch[]): AhoCorasick {
-  return new AhoCorasick(entries);
+export function buildMatcher(entries: KeywordMatch[]): KeywordMatcher {
+  return new KeywordMatcher(entries);
 }
