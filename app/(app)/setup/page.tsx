@@ -8,6 +8,7 @@ import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Spinner } from "@/components/ui/spinner"
+import { toast } from "sonner"
 import { formatRelativeTime, normalizeUrl } from "@/lib/utils"
 
 type ProductInfo = {
@@ -375,6 +376,42 @@ function SetupPageContent() {
     setNewKeyword("")
   }
 
+  const addKeywordsFromText = useCallback((text: string) => {
+    const lines = text.split(/[\n,]/).map(l => l.trim()).filter(Boolean)
+    const lowercaseExisting = new Set(state.keywords.map(k => k.toLowerCase()))
+    const seen = new Set<string>()
+    const toAdd: string[] = []
+
+    for (const line of lines) {
+      const lower = line.toLowerCase()
+      if (!lowercaseExisting.has(lower) && !seen.has(lower)) {
+        toAdd.push(line)
+        seen.add(lower)
+      }
+    }
+
+    if (toAdd.length > 0) setState(prev => ({ ...prev, keywords: [...prev.keywords, ...toAdd] }))
+    const skipped = lines.length - toAdd.length
+    if (skipped > 0) toast.info(`Added ${toAdd.length}, skipped ${skipped} duplicates`)
+  }, [state.keywords])
+
+  const removeDuplicates = useCallback(() => {
+    const seen = new Set<string>()
+    const unique = state.keywords.filter(k => {
+      const lower = k.toLowerCase()
+      if (seen.has(lower)) return false
+      seen.add(lower)
+      return true
+    })
+    const removed = state.keywords.length - unique.length
+    if (removed > 0) {
+      setState(prev => ({ ...prev, keywords: unique }))
+      toast.success(`Removed ${removed} duplicate${removed > 1 ? 's' : ''}`)
+    } else {
+      toast.info("No duplicates found")
+    }
+  }, [state.keywords])
+
   const removeKeyword = (index: number): void => {
     setState((prev) => ({
       ...prev,
@@ -500,7 +537,9 @@ function SetupPageContent() {
           newKeyword={newKeyword}
           onNewKeywordChange={setNewKeyword}
           onAddKeyword={addKeyword}
+          onAddKeywordsFromText={addKeywordsFromText}
           onRemoveKeyword={removeKeyword}
+          onRemoveDuplicates={removeDuplicates}
           onClearKeywords={clearKeywords}
           onSubmit={handleKeywordsSubmit}
           onBack={handleBack}
@@ -676,7 +715,9 @@ type StepKeywordsProps = {
   newKeyword: string
   onNewKeywordChange: (value: string) => void
   onAddKeyword: () => void
+  onAddKeywordsFromText: (text: string) => void
   onRemoveKeyword: (index: number) => void
+  onRemoveDuplicates: () => void
   onClearKeywords: () => void
   onSubmit: () => void
   onBack: () => void
@@ -691,7 +732,9 @@ function StepKeywords({
   newKeyword,
   onNewKeywordChange,
   onAddKeyword,
+  onAddKeywordsFromText,
   onRemoveKeyword,
+  onRemoveDuplicates,
   onClearKeywords,
   onSubmit,
   onBack,
@@ -728,6 +771,13 @@ function StepKeywords({
                       onAddKeyword()
                     }
                   }}
+                  onPaste={(e) => {
+                    const text = e.clipboardData.getData('text')
+                    if (text.includes('\n') || text.includes(',')) {
+                      e.preventDefault()
+                      onAddKeywordsFromText(text)
+                    }
+                  }}
                 />
                 <Button type="button" variant="outline" size="icon" onClick={onAddKeyword}>
                   <Plus className="size-4" />
@@ -748,15 +798,22 @@ function StepKeywords({
                 <span>
                   {keywords.length} keyword{keywords.length === 1 ? "" : "s"}
                 </span>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  onClick={onClearKeywords}
-                  disabled={keywords.length === 0}
-                >
-                  Clear keywords
-                </Button>
+                <div className="flex gap-2">
+                  {keywords.length > 1 && (
+                    <Button type="button" variant="ghost" size="sm" onClick={onRemoveDuplicates}>
+                      Remove Duplicates
+                    </Button>
+                  )}
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    onClick={onClearKeywords}
+                    disabled={keywords.length === 0}
+                  >
+                    Clear keywords
+                  </Button>
+                </div>
               </div>
             </div>
 

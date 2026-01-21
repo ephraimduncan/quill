@@ -147,6 +147,42 @@ export default function SettingsPage() {
     setNewKeyword("")
   }, [newKeyword, keywords])
 
+  const addKeywordsFromText = useCallback((text: string) => {
+    const lines = text.split(/[\n,]/).map(l => l.trim()).filter(Boolean)
+    const lowercaseExisting = new Set(keywords.map(k => k.toLowerCase()))
+    const seen = new Set<string>()
+    const toAdd: string[] = []
+
+    for (const line of lines) {
+      const lower = line.toLowerCase()
+      if (!lowercaseExisting.has(lower) && !seen.has(lower)) {
+        toAdd.push(line)
+        seen.add(lower)
+      }
+    }
+
+    if (toAdd.length > 0) setKeywords(prev => [...prev, ...toAdd])
+    const skipped = lines.length - toAdd.length
+    if (skipped > 0) toast.info(`Added ${toAdd.length}, skipped ${skipped} duplicates`)
+  }, [keywords])
+
+  const removeDuplicates = useCallback(() => {
+    const seen = new Set<string>()
+    const unique = keywords.filter(k => {
+      const lower = k.toLowerCase()
+      if (seen.has(lower)) return false
+      seen.add(lower)
+      return true
+    })
+    const removed = keywords.length - unique.length
+    if (removed > 0) {
+      setKeywords(unique)
+      toast.success(`Removed ${removed} duplicate${removed > 1 ? 's' : ''}`)
+    } else {
+      toast.info("No duplicates found")
+    }
+  }, [keywords])
+
   const removeKeyword = useCallback((index: number) => {
     setKeywords((prev) => prev.filter((_, i) => i !== index))
   }, [])
@@ -289,6 +325,13 @@ export default function SettingsPage() {
                     addKeyword()
                   }
                 }}
+                onPaste={(e) => {
+                  const text = e.clipboardData.getData('text')
+                  if (text.includes('\n') || text.includes(',')) {
+                    e.preventDefault()
+                    addKeywordsFromText(text)
+                  }
+                }}
               />
               <Button type="button" variant="outline" size="icon" onClick={addKeyword}>
                 <Plus className="size-4" />
@@ -319,9 +362,16 @@ export default function SettingsPage() {
               </p>
             )}
 
-            <p className="text-xs text-muted-foreground">
-              {keywords.length} keyword{keywords.length === 1 ? "" : "s"}
-            </p>
+            <div className="flex items-center justify-between">
+              <p className="text-xs text-muted-foreground">
+                {keywords.length} keyword{keywords.length === 1 ? "" : "s"}
+              </p>
+              {keywords.length > 1 && (
+                <Button variant="ghost" size="sm" onClick={removeDuplicates}>
+                  Remove Duplicates
+                </Button>
+              )}
+            </div>
           </CardContent>
         </Card>
 
