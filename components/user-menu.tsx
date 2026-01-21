@@ -1,6 +1,7 @@
 "use client"
 
 import Image from "next/image"
+import { useRouter } from "next/navigation"
 import { IconLogout, IconUser } from "@tabler/icons-react"
 import { buttonVariants } from "@/components/ui/button"
 import {
@@ -15,6 +16,7 @@ import { useSession, signOut } from "@/lib/auth/client"
 import { cn } from "@/lib/utils"
 
 export function UserMenu() {
+  const router = useRouter()
   const { data: session, isPending } = useSession()
 
   if (isPending) {
@@ -55,7 +57,17 @@ export function UserMenu() {
           )}
         </div>
         <DropdownMenuSeparator />
-        <DropdownMenuItem onClick={() => signOut()}>
+        <DropdownMenuItem
+          onClick={() =>
+            signOut({
+              fetchOptions: {
+                onSuccess: () => {
+                  router.push("/login")
+                },
+              },
+            })
+          }
+        >
           <IconLogout className="size-4" />
           Sign out
         </DropdownMenuItem>

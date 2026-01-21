@@ -85,8 +85,8 @@ async function runDiscovery(): Promise<void> {
     }));
     const matcher = buildMatcher(keywordEntries);
 
-    // Generate next 500 IDs by incrementing (F5Bot approach)
-    const idsToFetch = generateNextIdRange(lastPostId, 500);
+    // Generate next 2000 IDs by incrementing (F5Bot approach)
+    const idsToFetch = generateNextIdRange(lastPostId, 2000);
     console.log(`[Cron] Fetching ${idsToFetch.length} post IDs...`);
 
     // Batch fetch in chunks of 100
@@ -124,7 +124,7 @@ async function runDiscovery(): Promise<void> {
       existingThreads.map((t) => `${t.productId}:${t.redditThreadId}`)
     );
 
-    const sevenDaysAgo = Math.floor(Date.now() / 1000) - 7 * 24 * 60 * 60;
+    const thirtyDaysAgo = Math.floor(Date.now() / 1000) - 30 * 24 * 60 * 60;
     const now = Math.floor(Date.now() / 1000);
     const threadsToInsert: Array<{
       id: string;
@@ -142,7 +142,7 @@ async function runDiscovery(): Promise<void> {
     }> = [];
 
     for (const post of allPosts) {
-      if (post.created_utc < sevenDaysAgo) continue;
+      if (post.created_utc < thirtyDaysAgo) continue;
 
       const textToMatch = `${post.title} ${post.selftext}`;
       const matches = matcher.match(textToMatch);

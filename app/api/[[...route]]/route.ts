@@ -340,16 +340,21 @@ app.post("/extract", async (c) => {
 
   const body = await c.req.json();
   const { url } = body;
-  if (!url || typeof url !== "string") return c.json({ error: "URL is required" }, 400);
+  if (!url || typeof url !== "string") {
+    console.error("[Extract] URL is required - received:", typeof url, url);
+    return c.json({ error: "URL is required" }, 400);
+  }
 
   const normalizedUrl = normalizeUrlInput(url);
   let parsedUrl: URL;
   try {
     parsedUrl = new URL(normalizedUrl);
   } catch {
+    console.error("[Extract] Invalid URL format - could not parse:", normalizedUrl);
     return c.json({ error: "Invalid URL format" }, 400);
   }
   if (parsedUrl.protocol !== "http:" && parsedUrl.protocol !== "https:") {
+    console.error("[Extract] Invalid URL protocol:", parsedUrl.protocol, "for URL:", normalizedUrl);
     return c.json({ error: "Invalid URL format" }, 400);
   }
 
@@ -358,15 +363,20 @@ app.post("/extract", async (c) => {
     const response = await fetch(parsedUrl.toString(), {
       headers: { "User-Agent": "Mozilla/5.0 (compatible; QuillRedditAgent/1.0)" },
     });
-    if (!response.ok) return c.json({ error: `Failed to fetch URL: ${response.status}` }, 400);
+    if (!response.ok) {
+      console.error("[Extract] Failed to fetch URL:", parsedUrl.toString(), "- Status:", response.status);
+      return c.json({ error: `Failed to fetch URL: ${response.status}` }, 400);
+    }
     html = await response.text();
   } catch (err) {
+    console.error("[Extract] Fetch exception for URL:", parsedUrl.toString(), "- Error:", err);
     return c.json({ error: formatError("Failed to fetch URL", err) }, 400);
   }
 
   const { document } = parseHTML(html, parsedUrl.toString());
   const article = new Readability(document).parse();
   if (!article || !article.textContent?.trim()) {
+    console.error("[Extract] Could not extract content from URL:", parsedUrl.toString());
     return c.json({ error: "Could not extract content from URL" }, 400);
   }
 
@@ -692,8 +702,8 @@ app.get("/cron/discover", async (c) => {
     }));
     const matcher = buildMatcher(keywordEntries);
 
-    // Generate next 500 IDs by incrementing (F5Bot approach)
-    const idsToFetch = generateNextIdRange(lastPostId, 500);
+    // Generate next 2000 IDs by incrementing (F5Bot approach)
+    const idsToFetch = generateNextIdRange(lastPostId, 2000);
     console.log(`[Cron] Fetching ${idsToFetch.length} post IDs...`);
     
     // Batch fetch in chunks of 100 (F5Bot makes multiple parallel requests)
@@ -726,7 +736,7 @@ app.get("/cron/discover", async (c) => {
       .from(threads);
     const existingSet = new Set(existingThreads.map((t) => `${t.productId}:${t.redditThreadId}`));
 
-    const sevenDaysAgo = Math.floor(Date.now() / 1000) - 7 * 24 * 60 * 60;
+    const thirtyDaysAgo = Math.floor(Date.now() / 1000) - 30 * 24 * 60 * 60;
     const now = Math.floor(Date.now() / 1000);
     const threadsToInsert: Array<{
       id: string;
@@ -744,7 +754,7 @@ app.get("/cron/discover", async (c) => {
     }> = [];
 
     for (const post of posts) {
-      if (post.created_utc < sevenDaysAgo) continue;
+      if (post.created_utc < thirtyDaysAgo) continue;
 
       const textToMatch = `${post.title} ${post.selftext}`;
       const matches = matcher.match(textToMatch);
