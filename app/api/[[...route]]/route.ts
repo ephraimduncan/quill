@@ -606,6 +606,8 @@ const generateResponseSchema = z.object({
     title: z.string().min(1),
     body: z.string().optional().default(""),
     subreddit: z.string().min(1),
+    type: z.enum(["post", "comment"]).optional().default("post"),
+    commentBody: z.string().optional(),
   }),
   product: z.object({
     name: z.string().min(1),
@@ -634,12 +636,21 @@ app.post("/response/generate", async (c) => {
 
   const { thread, product, customInstructions } = parsed.data;
 
-  const prompt = `You are helping a product maker engage authentically on Reddit. Write a helpful response to this Reddit post that naturally recommends their product as a solution.
-
-REDDIT POST:
+  const isComment = thread.type === "comment";
+  const contextSection = isComment
+    ? `REDDIT COMMENT TO REPLY TO:
+Subreddit: r/${thread.subreddit}
+Post Title: ${thread.title}
+${thread.body ? `Post Content: ${thread.body}` : ""}
+Comment: ${thread.commentBody || ""}`
+    : `REDDIT POST:
 Subreddit: r/${thread.subreddit}
 Title: ${thread.title}
-${thread.body ? `Content: ${thread.body}` : ""}
+${thread.body ? `Content: ${thread.body}` : ""}`;
+
+  const prompt = `You are helping a product maker engage authentically on Reddit. Write a helpful response to this ${isComment ? "comment" : "post"} that naturally recommends their product as a solution.
+
+${contextSection}
 
 PRODUCT TO RECOMMEND:
 Name: ${product.name}

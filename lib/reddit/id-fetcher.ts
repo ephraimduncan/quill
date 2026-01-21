@@ -68,9 +68,19 @@ export interface RedditPost {
   created_utc: number;
 }
 
-interface RedditApiChild {
+export interface RedditComment {
+  id: string;
+  body: string;
+  subreddit: string;
+  permalink: string;
+  created_utc: number;
+  link_id: string;
+  link_title: string;
+}
+
+interface RedditApiChild<T = RedditPost> {
   kind: string;
-  data: RedditPost;
+  data: T;
 }
 
 export async function fetchLatestPostId(): Promise<string | null> {
@@ -103,12 +113,12 @@ export async function batchFetchPosts(ids: string[]): Promise<RedditPost[]> {
 
   const fullnames = ids.map((id) => `t3_${id}`).join(",");
   const url = `https://api.reddit.com/api/info.json?id=${fullnames}&raw_json=1`;
-  
+
   console.log(`[Reddit] Fetching batch of ${ids.length} posts...`);
-  
+
   try {
     const res = await fetch(url, { headers: REDDIT_HEADERS });
-    
+
     if (!res.ok) {
       const body = await res.text().catch(() => "");
       console.error(`[Reddit] batchFetchPosts failed: ${res.status} ${res.statusText}`, {
@@ -119,15 +129,49 @@ export async function batchFetchPosts(ids: string[]): Promise<RedditPost[]> {
     }
 
     const data = await res.json();
-    const children: RedditApiChild[] = data?.data?.children ?? [];
+    const children: RedditApiChild<RedditPost>[] = data?.data?.children ?? [];
     const posts = children
       .filter((child) => child.kind === "t3")
       .map((child) => child.data);
-    
+
     console.log(`[Reddit] Got ${posts.length} posts from batch of ${ids.length}`);
     return posts;
   } catch (error) {
     console.error("[Reddit] batchFetchPosts error:", error);
+    return [];
+  }
+}
+
+export async function batchFetchComments(ids: string[]): Promise<RedditComment[]> {
+  if (ids.length === 0) return [];
+
+  const fullnames = ids.map((id) => `t1_${id}`).join(",");
+  const url = `https://api.reddit.com/api/info.json?id=${fullnames}&raw_json=1`;
+
+  console.log(`[Reddit] Fetching batch of ${ids.length} comments...`);
+
+  try {
+    const res = await fetch(url, { headers: REDDIT_HEADERS });
+
+    if (!res.ok) {
+      const body = await res.text().catch(() => "");
+      console.error(`[Reddit] batchFetchComments failed: ${res.status} ${res.statusText}`, {
+        idsCount: ids.length,
+        responseBody: body.slice(0, 500),
+      });
+      return [];
+    }
+
+    const data = await res.json();
+    const children: RedditApiChild<RedditComment>[] = data?.data?.children ?? [];
+    const comments = children
+      .filter((child) => child.kind === "t1")
+      .map((child) => child.data);
+
+    console.log(`[Reddit] Got ${comments.length} comments from batch of ${ids.length}`);
+    return comments;
+  } catch (error) {
+    console.error("[Reddit] batchFetchComments error:", error);
     return [];
   }
 }

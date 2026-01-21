@@ -32,11 +32,16 @@ export const threads = sqliteTable("threads", {
   status: text("status", { enum: ["active", "dismissed"] }).notNull().default("active"),
   isNew: integer("is_new", { mode: "boolean" }).notNull().default(true),
   matchedKeyword: text("matched_keyword"),
+  type: text("type", { enum: ["post", "comment"] }).default("post"),
+  commentBody: text("comment_body"),
+  parentPostId: text("parent_post_id"),
+  parentPostTitle: text("parent_post_title"),
 });
 
 export const redditSyncState = sqliteTable("reddit_sync_state", {
   id: text("id").primaryKey().default("global"),
   lastPostId: text("last_post_id").notNull(),
+  lastCommentId: text("last_comment_id"),
   updatedAt: integer("updated_at").notNull(),
 });
 

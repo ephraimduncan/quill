@@ -21,9 +21,11 @@ import { createClient } from "@libsql/client";
 import * as schema from "../lib/db/schema";
 import {
   batchFetchPosts,
+  batchFetchComments,
   generateNextIdRange,
   base36ToNumber,
   type RedditPost,
+  type RedditComment,
 } from "../lib/reddit/id-fetcher";
 import { buildMatcher, type KeywordMatch } from "../lib/reddit/keyword-matcher";
 
@@ -171,28 +173,117 @@ async function runDiscovery(): Promise<void> {
 
     if (threadsToInsert.length > 0) {
       await db.insert(threads).values(threadsToInsert);
-      console.log(`[Cron] Inserted ${threadsToInsert.length} new threads`);
+      console.log(`[Cron] Inserted ${threadsToInsert.length} new post threads`);
     }
 
-    // Update sync state with highest found ID
+    // Comment discovery
+    const DEFAULT_COMMENT_START_ID = "o0v5dc2";
+    const lastCommentId = syncState?.lastCommentId ?? DEFAULT_COMMENT_START_ID;
+    console.log(`[Cron] Starting comment discovery from ID: ${lastCommentId}`);
+
+    const commentIdsToFetch = generateNextIdRange(lastCommentId, 2000);
+    console.log(`[Cron] Fetching ${commentIdsToFetch.length} comment IDs...`);
+
+    const allComments: RedditComment[] = [];
+    for (let i = 0; i < commentIdsToFetch.length; i += 100) {
+      const chunk = commentIdsToFetch.slice(i, i + 100);
+      const comments = await batchFetchComments(chunk);
+      allComments.push(...comments);
+    }
+
+    console.log(`[Cron] Fetched ${allComments.length} comments from Reddit API`);
+
+    if (allComments.length === 0) {
+      console.warn("[Cron] WARNING: Got 0 comments from Reddit API - possible IP blocking or rate limiting");
+    }
+
+    let highestCommentId = lastCommentId;
+    for (const comment of allComments) {
+      if (base36ToNumber(comment.id) > base36ToNumber(highestCommentId)) {
+        highestCommentId = comment.id;
+      }
+    }
+
+    const commentThreadsToInsert: Array<{
+      id: string;
+      productId: string;
+      redditThreadId: string;
+      title: string;
+      bodyPreview: string;
+      subreddit: string;
+      url: string;
+      createdUtc: number;
+      discoveredAt: number;
+      status: "active";
+      isNew: true;
+      matchedKeyword: string;
+      type: "comment";
+      commentBody: string;
+      parentPostId: string;
+      parentPostTitle: string;
+    }> = [];
+
+    for (const comment of allComments) {
+      if (comment.created_utc < thirtyDaysAgo) continue;
+
+      const matches = matcher.match(comment.body);
+
+      for (const match of matches) {
+        const key = `${match.productId}:${comment.id}`;
+        if (existingSet.has(key)) continue;
+        existingSet.add(key);
+
+        const parentPostId = comment.link_id.replace("t3_", "");
+
+        commentThreadsToInsert.push({
+          id: randomUUID(),
+          productId: match.productId,
+          redditThreadId: comment.id,
+          title: comment.link_title || "[Comment]",
+          bodyPreview: comment.body.slice(0, 200),
+          subreddit: comment.subreddit,
+          url: `https://reddit.com${comment.permalink}`,
+          createdUtc: comment.created_utc,
+          discoveredAt: now,
+          status: "active",
+          isNew: true,
+          matchedKeyword: match.keyword,
+          type: "comment",
+          commentBody: comment.body,
+          parentPostId,
+          parentPostTitle: comment.link_title || "",
+        });
+      }
+    }
+
+    if (commentThreadsToInsert.length > 0) {
+      await db.insert(threads).values(commentThreadsToInsert);
+      console.log(`[Cron] Inserted ${commentThreadsToInsert.length} new comment threads`);
+    }
+
+    // Update sync state with highest found IDs
     if (!syncState) {
       await db.insert(redditSyncState).values({
         id: "global",
         lastPostId: highestId,
+        lastCommentId: highestCommentId,
         updatedAt: now,
       });
     } else {
       await db
         .update(redditSyncState)
-        .set({ lastPostId: highestId, updatedAt: now })
+        .set({ lastPostId: highestId, lastCommentId: highestCommentId, updatedAt: now })
         .where(eq(redditSyncState.id, "global"));
     }
 
     const duration = Date.now() - startTime;
     console.log(`[Cron] Completed in ${duration}ms`, {
       postsProcessed: allPosts.length,
-      newThreadsFound: threadsToInsert.length,
+      commentsProcessed: allComments.length,
+      newPostThreadsFound: threadsToInsert.length,
+      newCommentThreadsFound: commentThreadsToInsert.length,
       lastPostId: highestId,
+      lastCommentId: highestCommentId,
     });
   } catch (error) {
     const duration = Date.now() - startTime;
