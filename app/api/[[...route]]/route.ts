@@ -728,8 +728,8 @@ app.get("/cron/discover", async (c) => {
     }));
     const matcher = buildMatcher(keywordEntries);
 
-    // Generate next 2000 IDs by incrementing (F5Bot approach)
-    const idsToFetch = generateNextIdRange(lastPostId, 2000);
+    // Generate next 3000 IDs by incrementing (F5Bot approach)
+    const idsToFetch = generateNextIdRange(lastPostId, 3000);
     console.log(`[Cron] Fetching ${idsToFetch.length} post IDs...`);
     
     // Batch fetch in chunks of 100 (F5Bot makes multiple parallel requests)

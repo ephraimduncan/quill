@@ -87,8 +87,8 @@ async function runDiscovery(): Promise<void> {
     }));
     const matcher = buildMatcher(keywordEntries);
 
-    // Generate next 2000 IDs by incrementing (F5Bot approach)
-    const idsToFetch = generateNextIdRange(lastPostId, 2000);
+    // Generate next 3000 IDs by incrementing (F5Bot approach)
+    const idsToFetch = generateNextIdRange(lastPostId, 3000);
     console.log(`[Cron] Fetching ${idsToFetch.length} post IDs...`);
 
     // Batch fetch in chunks of 100
@@ -181,7 +181,7 @@ async function runDiscovery(): Promise<void> {
     const lastCommentId = syncState?.lastCommentId ?? DEFAULT_COMMENT_START_ID;
     console.log(`[Cron] Starting comment discovery from ID: ${lastCommentId}`);
 
-    const commentIdsToFetch = generateNextIdRange(lastCommentId, 2000);
+    const commentIdsToFetch = generateNextIdRange(lastCommentId, 3000);
     console.log(`[Cron] Fetching ${commentIdsToFetch.length} comment IDs...`);
 
     const allComments: RedditComment[] = [];
