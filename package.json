@@ -45,7 +45,6 @@
     "eslint": "^9",
     "eslint-config-next": "16.1.2",
     "tailwindcss": "^4",
-    "tsx": "^4.19.0",
     "typescript": "^5"
   },
   "ignoreScripts": [
