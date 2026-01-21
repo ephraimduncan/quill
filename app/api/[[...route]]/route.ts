@@ -377,6 +377,7 @@ app.post("/extract", async (c) => {
   const article = new Readability(document).parse();
   if (!article || !article.textContent?.trim()) {
     console.error("[Extract] Could not extract content from URL:", parsedUrl.toString());
+    console.error("[Extract] Raw HTML:", html);
     return c.json({ error: "Could not extract content from URL" }, 400);
   }
 
