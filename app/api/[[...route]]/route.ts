@@ -10,7 +10,7 @@ import { auth } from "@/lib/auth";
 import { db, products, threads, keywords, redditSyncState } from "@/lib/db";
 import { batchFetchPosts, generateNextIdRange, base36ToNumber, type RedditPost } from "@/lib/reddit/id-fetcher";
 import { buildMatcher, type KeywordMatch } from "@/lib/reddit/keyword-matcher";
-import { extractModel, keywordsModel, responseModel } from "@/lib/models";
+import { extractModel, keywordsModel, responseModel, relevanceModel } from "@/lib/models";
 
 type Variables = {
   user: typeof auth.$Infer.Session.user | null;
@@ -659,15 +659,13 @@ ${product.description ? `Description: ${product.description}` : ""}
 ${product.targetAudience ? `Target Audience: ${product.targetAudience}` : ""}
 ${customInstructions ? `\nUSER INSTRUCTIONS:\n${customInstructions}\n` : ""}
 GUIDELINES:
-- Keep it SHORT: 80-100 words maximum. Strict limit.
-- Be genuinely helpful - address the user's question/problem, or add value to the discussion
+- STRICT LENGTH: 50-70 words maximum. This is non-negotiable. Count your words.
+- Be genuinely helpful - address the user's question/problem directly
 - Weave the product mention naturally INTO a relevant sentence, not at the end
 - Reference the URL as a bare domain (productname.com) not https://productname.com
-- Use 2-3 short paragraphs with blank lines between them - never one wall of text
-- Match Reddit's casual tone - sound like a real person sharing a helpful tip
-- No disclosure ("I'm affiliated with", "I work for")
-- No marketing speak, no excessive enthusiasm, no fluff
-- Do not use markdown formatting (no **bold**, *italic*, [links](url), etc.)
+- Use 2 short paragraphs max with a blank line between - never a wall of text
+- Match Reddit's casual tone - sound like a real person sharing a tip
+- No disclosure, no marketing speak, no fluff
 
 Write only the response text, nothing else.`;
 
@@ -676,6 +674,68 @@ Write only the response text, nothing else.`;
     return c.json({ response: text });
   } catch (err) {
     return c.json({ error: formatError("Failed to generate response", err) }, 500);
+  }
+});
+
+const relevanceSchema = z.object({
+  thread: z.object({
+    title: z.string().min(1),
+    body: z.string().optional().default(""),
+    subreddit: z.string().min(1),
+  }),
+  product: z.object({
+    name: z.string().min(1),
+    description: z.string().optional().default(""),
+    targetAudience: z.string().optional().default(""),
+  }),
+});
+
+const relevanceOutputSchema = z.object({
+  relevance: z.number().min(0).max(100).describe("Relevance score from 0 to 100"),
+});
+
+app.post("/response/relevance", async (c) => {
+  const user = c.get("user");
+  if (!user) return c.json({ error: "Unauthorized" }, 401);
+
+  const body = await c.req.json();
+  const parsed = relevanceSchema.safeParse(body);
+  if (!parsed.success) {
+    return c.json({ error: "Invalid request data", details: parsed.error.issues }, 400);
+  }
+
+  const { thread, product } = parsed.data;
+
+  const prompt = `Rate how relevant this Reddit post is for naturally promoting this product. Consider:
+- Does the post discuss problems/needs the product solves?
+- Would mentioning this product seem natural and helpful?
+- Is the audience likely interested in this type of solution?
+
+REDDIT POST:
+Subreddit: r/${thread.subreddit}
+Title: ${thread.title}
+${thread.body ? `Content: ${thread.body}` : ""}
+
+PRODUCT:
+Name: ${product.name}
+${product.description ? `Description: ${product.description}` : ""}
+${product.targetAudience ? `Target Audience: ${product.targetAudience}` : ""}
+
+Return a score from 0-100 where:
+- 70-100: Highly relevant - post directly discusses needs the product addresses
+- 40-69: Moderately relevant - post is tangentially related, product could be mentioned
+- 0-39: Low relevance - forcing a product mention would seem spammy`;
+
+  try {
+    const { output } = await generateText({
+      model: relevanceModel,
+      output: Output.object({ schema: relevanceOutputSchema }),
+      prompt,
+      temperature: 0,
+    });
+    return c.json({ relevance: output!.relevance });
+  } catch (err) {
+    return c.json({ error: formatError("Failed to score relevance", err) }, 500);
   }
 });
 

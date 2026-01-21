@@ -91,6 +91,7 @@ export default function MonitorPage() {
   const [isRefreshing, setIsRefreshing] = useState(false)
   const [threadResponses, setThreadResponses] = useState<Record<string, string>>({})
   const [threadCustomInstructions, setThreadCustomInstructions] = useState<Record<string, string>>({})
+  const [threadRelevance, setThreadRelevance] = useState<Record<string, number>>({})
 
   const updateThread = useCallback((threadId: string, updates: Partial<Thread>) => {
     setProduct((prev) => {
@@ -435,6 +436,7 @@ export default function MonitorPage() {
                             }}
                             initialResponse={threadResponses[selectedThread.id] || ""}
                             initialCustomInstructions={threadCustomInstructions[selectedThread.id] || ""}
+                            initialRelevance={threadRelevance[selectedThread.id] ?? null}
                             onResponseChange={(response) => {
                               setThreadResponses((prev) => ({
                                 ...prev,
@@ -445,6 +447,12 @@ export default function MonitorPage() {
                               setThreadCustomInstructions((prev) => ({
                                 ...prev,
                                 [selectedThread.id]: instructions,
+                              }))
+                            }}
+                            onRelevanceChange={(relevance) => {
+                              setThreadRelevance((prev) => ({
+                                ...prev,
+                                [selectedThread.id]: relevance,
                               }))
                             }}
                           />

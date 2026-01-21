@@ -6,6 +6,7 @@ import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
 import { Spinner } from "@/components/ui/spinner"
+import { cn } from "@/lib/utils"
 
 type Thread = {
   title: string
@@ -25,8 +26,25 @@ type ResponseEditorPanelProps = {
   product: Product
   initialResponse?: string
   initialCustomInstructions?: string
+  initialRelevance?: number | null
   onResponseChange?: (response: string) => void
   onCustomInstructionsChange?: (instructions: string) => void
+  onRelevanceChange?: (relevance: number) => void
+}
+
+function RelevanceBadge({ relevance }: { relevance: number }) {
+  const color =
+    relevance >= 70
+      ? "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200"
+      : relevance >= 40
+        ? "bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200"
+        : "bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200"
+
+  return (
+    <span className={cn("text-xs font-medium px-2 py-1 rounded-full", color)}>
+      {relevance}% relevant
+    </span>
+  )
 }
 
 export function ResponseEditorPanel({
@@ -34,54 +52,77 @@ export function ResponseEditorPanel({
   product,
   initialResponse = "",
   initialCustomInstructions = "",
+  initialRelevance = null,
   onResponseChange,
   onCustomInstructionsChange,
+  onRelevanceChange,
 }: ResponseEditorPanelProps) {
   const [response, setResponse] = useState(initialResponse)
   const [isGenerating, setIsGenerating] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [copied, setCopied] = useState(false)
   const [customInstructions, setCustomInstructions] = useState(initialCustomInstructions)
+  const [relevance, setRelevance] = useState<number | null>(initialRelevance)
 
   // Sync with initial values when thread changes
   useEffect(() => {
     setResponse(initialResponse)
     setCustomInstructions(initialCustomInstructions)
-  }, [initialResponse, initialCustomInstructions])
+    setRelevance(initialRelevance)
+  }, [initialResponse, initialCustomInstructions, initialRelevance])
 
   async function generateResponse() {
     setIsGenerating(true)
     setError(null)
 
+    const threadPayload = {
+      title: thread.title,
+      body: thread.bodyPreview,
+      subreddit: thread.subreddit,
+    }
+    const productPayload = {
+      name: product.name,
+      url: product.url,
+      description: product.description,
+      targetAudience: product.targetAudience,
+    }
+
     try {
-      const res = await fetch("/api/response/generate", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          thread: {
-            title: thread.title,
-            body: thread.bodyPreview,
-            subreddit: thread.subreddit,
-          },
-          product: {
-            name: product.name,
-            url: product.url,
-            description: product.description,
-            targetAudience: product.targetAudience,
-          },
-          customInstructions: customInstructions,
+      const [responseRes, relevanceRes] = await Promise.all([
+        fetch("/api/response/generate", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            thread: threadPayload,
+            product: productPayload,
+            customInstructions: customInstructions,
+          }),
         }),
-      })
+        fetch("/api/response/relevance", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            thread: threadPayload,
+            product: productPayload,
+          }),
+        }),
+      ])
 
-      const data = await res.json()
+      const responseData = await responseRes.json()
+      const relevanceData = await relevanceRes.json()
 
-      if (!res.ok) {
-        setError(data.error || "Failed to generate response")
+      if (!responseRes.ok) {
+        setError(responseData.error || "Failed to generate response")
         return
       }
 
-      setResponse(data.response)
-      onResponseChange?.(data.response)
+      setResponse(responseData.response)
+      onResponseChange?.(responseData.response)
+
+      if (relevanceRes.ok && typeof relevanceData.relevance === "number") {
+        setRelevance(relevanceData.relevance)
+        onRelevanceChange?.(relevanceData.relevance)
+      }
     } catch {
       setError("Failed to connect to server")
     } finally {
@@ -141,6 +182,11 @@ export function ResponseEditorPanel({
 
       {showEditor && (
         <>
+          {relevance !== null && (
+            <div className="flex items-center">
+              <RelevanceBadge relevance={relevance} />
+            </div>
+          )}
           <Textarea
             value={response}
             onChange={(e) => handleResponseChange(e.target.value)}
