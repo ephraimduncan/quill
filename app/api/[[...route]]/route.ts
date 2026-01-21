@@ -274,6 +274,19 @@ app.put("/products/:id", async (c) => {
   return c.json({ id: productId });
 });
 
+app.delete("/products/:id", async (c) => {
+  const user = c.get("user");
+  if (!user) return c.json({ error: "Unauthorized" }, 401);
+
+  const productId = c.req.param("id");
+  const product = await findUserProduct(user.id, productId);
+  if (!product) return c.json({ error: "Product not found" }, 404);
+
+  // Cascade delete handles keywords and threads via schema
+  await db.delete(products).where(eq(products.id, productId));
+  return c.json({ success: true });
+});
+
 const productInfoSchema = z.object({
   name: z.string().describe("The product or service name"),
   description: z

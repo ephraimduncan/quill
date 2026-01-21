@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback } from "react"
 import { useParams } from "next/navigation"
 import Link from "next/link"
-import { ExternalLink, X, RotateCcw, RefreshCw, Pencil, Sparkles } from "lucide-react"
+import { ExternalLink, X, RotateCcw, RefreshCw, Settings, Sparkles } from "lucide-react"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Badge } from "@/components/ui/badge"
@@ -276,10 +276,10 @@ export default function MonitorPage() {
       <div className="mb-6">
         <div className="flex items-center gap-3">
           <h1 className="text-2xl font-bold">{product.name}</h1>
-          <Link href={`/setup?edit=${productId}`}>
+          <Link href={`/monitor/${productId}/settings`}>
             <Button variant="ghost" size="sm">
-              <Pencil className="size-4 mr-1" />
-              Edit
+              <Settings className="size-4 mr-1" />
+              Settings
             </Button>
           </Link>
         </div>
