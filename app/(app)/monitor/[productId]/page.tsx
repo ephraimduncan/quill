@@ -139,6 +139,47 @@ export default function MonitorPage() {
         if (activeThreads.length > 0) {
           setSelectedThreadId(activeThreads[0].id)
         }
+
+        // Prefetch relevance for threads without scores
+        const threadsWithoutRelevance = productData.threads.filter(
+          (t: Thread) => t.status === "active" && t.relevanceScore === null
+        )
+        for (const t of threadsWithoutRelevance) {
+          fetch("/api/response/relevance", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              thread: { title: t.title, body: t.bodyPreview, subreddit: t.subreddit },
+              product: { name: productData.name, description: productData.description, targetAudience: productData.targetAudience }
+            })
+          })
+            .then(res => res.json())
+            .then(data => {
+              if (typeof data.relevance === "number") {
+                setThreadRelevance(prev => ({ ...prev, [t.id]: data.relevance }))
+
+                if (data.relevance < 20) {
+                  setProduct(prev => {
+                    if (!prev) return prev
+                    return {
+                      ...prev,
+                      threads: prev.threads.map(th =>
+                        th.id === t.id ? { ...th, status: "dismissed", isNew: false } : th
+                      )
+                    }
+                  })
+                  fetch(`/api/threads/${t.id}/dismiss`, { method: "POST" })
+                }
+
+                fetch(`/api/threads/${t.id}/response`, {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({ relevanceScore: data.relevance })
+                })
+              }
+            })
+            .catch(() => {})
+        }
       } catch {
         setError("Failed to connect to server")
       } finally {

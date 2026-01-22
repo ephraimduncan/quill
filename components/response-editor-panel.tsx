@@ -8,6 +8,10 @@ import { Textarea } from "@/components/ui/textarea"
 import { Spinner } from "@/components/ui/spinner"
 import { cn } from "@/lib/utils"
 
+function normalizeResponse(text: string): string {
+  return text.replace(/—/g, "; ").replace(/\n{2,}/g, "\n")
+}
+
 type Thread = {
   title: string
   bodyPreview: string
@@ -70,7 +74,7 @@ export function ResponseEditorPanel({
 
   // Sync with initial values when thread changes
   useEffect(() => {
-    setResponse(initialResponse)
+    setResponse(normalizeResponse(initialResponse))
     setCustomInstructions(initialCustomInstructions)
     setRelevance(initialRelevance)
   }, [initialResponse, initialCustomInstructions, initialRelevance])
@@ -166,11 +170,12 @@ export function ResponseEditorPanel({
         return
       }
 
-      setResponse(responseData.response)
-      onResponseChange?.(responseData.response)
+      const normalized = normalizeResponse(responseData.response)
+      setResponse(normalized)
+      onResponseChange?.(normalized)
 
       const saveData: { generatedResponse: string; customInstructions?: string; relevanceScore?: number } = {
-        generatedResponse: responseData.response,
+        generatedResponse: normalized,
       }
       if (customInstructions) {
         saveData.customInstructions = customInstructions
@@ -200,7 +205,7 @@ export function ResponseEditorPanel({
   }
 
   async function copyToClipboard() {
-    await navigator.clipboard.writeText(response)
+    await navigator.clipboard.writeText(normalizeResponse(response))
     setCopied(true)
     toast.success("Response copied to clipboard")
     setTimeout(() => setCopied(false), 2000)
