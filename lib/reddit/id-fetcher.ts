@@ -66,6 +66,7 @@ export interface RedditPost {
   subreddit: string;
   permalink: string;
   created_utc: number;
+  author: string;
 }
 
 export interface RedditComment {
@@ -76,6 +77,7 @@ export interface RedditComment {
   created_utc: number;
   link_id: string;
   link_title: string;
+  author: string;
 }
 
 interface RedditApiChild<T = RedditPost> {

@@ -7,7 +7,7 @@ import { Readability } from "@mozilla/readability";
 import { generateText, Output } from "ai";
 import { z } from "zod";
 import { auth } from "@/lib/auth";
-import { db, products, threads, keywords, redditSyncState } from "@/lib/db";
+import { db, products, threads, keywords, redditSyncState, blockedAuthors } from "@/lib/db";
 import { batchFetchPosts, generateNextIdRange, base36ToNumber, type RedditPost } from "@/lib/reddit/id-fetcher";
 import { buildMatcher, type KeywordMatch } from "@/lib/reddit/keyword-matcher";
 import { extractModel, keywordsModel, responseModel, relevanceModel } from "@/lib/models";
@@ -46,6 +46,7 @@ type RedditThread = {
   subreddit: string;
   permalink: string;
   created_utc: number;
+  author: string;
 };
 
 type ThreadResult = {
@@ -162,15 +163,17 @@ app.get("/products/:id", async (c) => {
   const product = await findUserProduct(user.id, productId);
   if (!product) return c.json({ error: "Product not found" }, 404);
 
-  const [productKeywords, productThreads] = await Promise.all([
+  const [productKeywords, productThreads, productBlockedAuthors] = await Promise.all([
     db.select().from(keywords).where(eq(keywords.productId, productId)),
     db.select().from(threads).where(eq(threads.productId, productId)),
+    db.select().from(blockedAuthors).where(eq(blockedAuthors.productId, productId)),
   ]);
 
   return c.json({
     ...product,
     keywords: productKeywords.map((k) => k.keyword),
     threads: productThreads,
+    blockedAuthors: productBlockedAuthors.map((b) => b.username),
   });
 });
 
@@ -284,6 +287,55 @@ app.delete("/products/:id", async (c) => {
 
   // Cascade delete handles keywords and threads via schema
   await db.delete(products).where(eq(products.id, productId));
+  return c.json({ success: true });
+});
+
+const blockedAuthorSchema = z.object({
+  username: z.string().min(1).transform((v) => v.replace(/^u\//, "").trim()),
+});
+
+app.post("/products/:id/blocked-authors", async (c) => {
+  const user = c.get("user");
+  if (!user) return c.json({ error: "Unauthorized" }, 401);
+
+  const productId = c.req.param("id");
+  const product = await findUserProduct(user.id, productId);
+  if (!product) return c.json({ error: "Product not found" }, 404);
+
+  const body = await c.req.json();
+  const parsed = blockedAuthorSchema.safeParse(body);
+  if (!parsed.success) return c.json({ error: "Invalid username" }, 400);
+
+  const { username } = parsed.data;
+
+  const existing = await db
+    .select()
+    .from(blockedAuthors)
+    .where(and(eq(blockedAuthors.productId, productId), eq(blockedAuthors.username, username)));
+  if (existing.length > 0) return c.json({ error: "Author already blocked" }, 400);
+
+  await db.insert(blockedAuthors).values({
+    id: randomUUID(),
+    productId,
+    username,
+  });
+
+  return c.json({ success: true }, 201);
+});
+
+app.delete("/products/:id/blocked-authors/:username", async (c) => {
+  const user = c.get("user");
+  if (!user) return c.json({ error: "Unauthorized" }, 401);
+
+  const productId = c.req.param("id");
+  const product = await findUserProduct(user.id, productId);
+  if (!product) return c.json({ error: "Product not found" }, 404);
+
+  const username = decodeURIComponent(c.req.param("username"));
+  await db
+    .delete(blockedAuthors)
+    .where(and(eq(blockedAuthors.productId, productId), eq(blockedAuthors.username, username)));
+
   return c.json({ success: true });
 });
 
@@ -591,6 +643,12 @@ app.post("/threads/refresh", async (c) => {
   const productKeywords = await db.select().from(keywords).where(eq(keywords.productId, productId));
   if (productKeywords.length === 0) return c.json({ error: "No keywords found for this product" }, 400);
 
+  const productBlockedAuthors = await db
+    .select({ username: blockedAuthors.username })
+    .from(blockedAuthors)
+    .where(eq(blockedAuthors.productId, productId));
+  const blockedSet = new Set(productBlockedAuthors.map((b) => b.username.toLowerCase()));
+
   const existingThreads = await db
     .select({ redditThreadId: threads.redditThreadId })
     .from(threads)
@@ -606,6 +664,7 @@ app.post("/threads/refresh", async (c) => {
       const posts = await searchRedditForKeyword(kw.keyword);
       for (const thread of posts) {
         if (seenIds.has(thread.id) || existingIds.has(thread.id) || thread.created_utc < sevenDaysAgo) continue;
+        if (blockedSet.has(thread.author.toLowerCase())) continue;
         seenIds.add(thread.id);
         newThreads.push(redditThreadToResult(thread));
       }

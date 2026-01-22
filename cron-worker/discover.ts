@@ -42,7 +42,7 @@ const client = createClient({
 });
 
 const db = drizzle(client, { schema });
-const { keywords, threads, redditSyncState } = schema;
+const { keywords, threads, redditSyncState, blockedAuthors } = schema;
 
 async function runDiscovery(): Promise<void> {
   const startTime = Date.now();
@@ -86,6 +86,18 @@ async function runDiscovery(): Promise<void> {
       productId: k.productId,
     }));
     const matcher = buildMatcher(keywordEntries);
+
+    const allBlockedAuthors = await db
+      .select({ username: blockedAuthors.username, productId: blockedAuthors.productId })
+      .from(blockedAuthors);
+    const blockedByProduct = new Map<string, Set<string>>();
+    for (const ba of allBlockedAuthors) {
+      if (!blockedByProduct.has(ba.productId)) {
+        blockedByProduct.set(ba.productId, new Set());
+      }
+      blockedByProduct.get(ba.productId)!.add(ba.username.toLowerCase());
+    }
+    console.log(`[Cron] Loaded ${allBlockedAuthors.length} blocked authors across products`);
 
     // Generate next 3000 IDs by incrementing (F5Bot approach)
     const idsToFetch = generateNextIdRange(lastPostId, 3000);
@@ -148,8 +160,12 @@ async function runDiscovery(): Promise<void> {
 
       const textToMatch = `${post.title} ${post.selftext}`;
       const matches = matcher.match(textToMatch);
+      const authorLower = post.author.toLowerCase();
 
       for (const match of matches) {
+        const blocked = blockedByProduct.get(match.productId);
+        if (blocked?.has(authorLower)) continue;
+
         const key = `${match.productId}:${post.id}`;
         if (existingSet.has(key)) continue;
         existingSet.add(key);
@@ -227,8 +243,12 @@ async function runDiscovery(): Promise<void> {
       if (comment.created_utc < thirtyDaysAgo) continue;
 
       const matches = matcher.match(comment.body);
+      const authorLower = comment.author.toLowerCase();
 
       for (const match of matches) {
+        const blocked = blockedByProduct.get(match.productId);
+        if (blocked?.has(authorLower)) continue;
+
         const key = `${match.productId}:${comment.id}`;
         if (existingSet.has(key)) continue;
         existingSet.add(key);

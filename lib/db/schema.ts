@@ -19,6 +19,12 @@ export const keywords = sqliteTable("keywords", {
   keyword: text("keyword").notNull(),
 });
 
+export const blockedAuthors = sqliteTable("blocked_authors", {
+  id: text("id").primaryKey(),
+  productId: text("product_id").notNull().references(() => products.id, { onDelete: "cascade" }),
+  username: text("username").notNull(),
+});
+
 export const threads = sqliteTable("threads", {
   id: text("id").primaryKey(),
   productId: text("product_id").notNull().references(() => products.id, { onDelete: "cascade" }),
@@ -54,6 +60,8 @@ export type Product = typeof products.$inferSelect;
 export type NewProduct = typeof products.$inferInsert;
 export type Keyword = typeof keywords.$inferSelect;
 export type NewKeyword = typeof keywords.$inferInsert;
+export type BlockedAuthor = typeof blockedAuthors.$inferSelect;
+export type NewBlockedAuthor = typeof blockedAuthors.$inferInsert;
 export type Thread = typeof threads.$inferSelect;
 export type NewThread = typeof threads.$inferInsert;
 export type RedditSyncState = typeof redditSyncState.$inferSelect;

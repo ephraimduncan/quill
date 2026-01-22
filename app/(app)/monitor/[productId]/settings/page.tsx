@@ -30,6 +30,7 @@ type Product = {
   targetAudience: string
   url: string
   keywords: string[]
+  blockedAuthors: string[]
 }
 
 export default function SettingsPage() {
@@ -43,6 +44,7 @@ export default function SettingsPage() {
   const [isDeleting, setIsDeleting] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [newKeyword, setNewKeyword] = useState("")
+  const [newBlockedAuthor, setNewBlockedAuthor] = useState("")
 
   // Form state
   const [name, setName] = useState("")
@@ -50,6 +52,7 @@ export default function SettingsPage() {
   const [targetAudience, setTargetAudience] = useState("")
   const [url, setUrl] = useState("")
   const [keywords, setKeywords] = useState<string[]>([])
+  const [blockedAuthors, setBlockedAuthors] = useState<string[]>([])
 
   useEffect(() => {
     async function fetchProduct() {
@@ -68,6 +71,7 @@ export default function SettingsPage() {
         setTargetAudience(data.targetAudience || "")
         setUrl(data.url)
         setKeywords(data.keywords || [])
+        setBlockedAuthors(data.blockedAuthors || [])
       } catch {
         setError("Failed to connect to server")
       } finally {
@@ -186,6 +190,53 @@ export default function SettingsPage() {
   const removeKeyword = useCallback((index: number) => {
     setKeywords((prev) => prev.filter((_, i) => i !== index))
   }, [])
+
+  const addBlockedAuthor = useCallback(async () => {
+    const username = newBlockedAuthor.trim().replace(/^u\//, "")
+    if (!username) return
+    if (blockedAuthors.some((a) => a.toLowerCase() === username.toLowerCase())) {
+      toast.error("Author already blocked")
+      return
+    }
+
+    try {
+      const res = await fetch(`/api/products/${productId}/blocked-authors`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ username }),
+      })
+
+      if (!res.ok) {
+        const data = await res.json()
+        toast.error(data.error || "Failed to block author")
+        return
+      }
+
+      setBlockedAuthors((prev) => [...prev, username])
+      setNewBlockedAuthor("")
+      toast.success(`Blocked u/${username}`)
+    } catch {
+      toast.error("Failed to connect to server")
+    }
+  }, [newBlockedAuthor, blockedAuthors, productId])
+
+  const removeBlockedAuthor = useCallback(async (username: string) => {
+    try {
+      const res = await fetch(`/api/products/${productId}/blocked-authors/${encodeURIComponent(username)}`, {
+        method: "DELETE",
+      })
+
+      if (!res.ok) {
+        toast.error("Failed to unblock author")
+        return
+      }
+
+      setBlockedAuthors((prev) => prev.filter((a) => a !== username))
+      toast.success(`Unblocked u/${username}`)
+    } catch {
+      toast.error("Failed to connect to server")
+    }
+  }, [productId])
 
   const hasChanges = product && (
     name !== product.name ||
@@ -372,6 +423,62 @@ export default function SettingsPage() {
                 </Button>
               )}
             </div>
+          </CardContent>
+        </Card>
+
+        {/* Blocked Authors */}
+        <Card>
+          <CardHeader>
+            <CardTitle>Blocked Authors</CardTitle>
+            <CardDescription>
+              Posts and comments from these Reddit users will be ignored
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="flex gap-2">
+              <Input
+                placeholder="Reddit username (e.g. spez)"
+                value={newBlockedAuthor}
+                onChange={(e) => setNewBlockedAuthor(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    e.preventDefault()
+                    addBlockedAuthor()
+                  }
+                }}
+              />
+              <Button type="button" variant="outline" size="icon" onClick={addBlockedAuthor}>
+                <Plus className="size-4" />
+              </Button>
+            </div>
+
+            {blockedAuthors.length > 0 ? (
+              <div className="flex flex-wrap gap-2">
+                {blockedAuthors.map((username) => (
+                  <div
+                    key={username}
+                    className="flex items-center gap-1 rounded-md bg-secondary px-2 py-1 text-sm"
+                  >
+                    u/{username}
+                    <button
+                      type="button"
+                      onClick={() => removeBlockedAuthor(username)}
+                      className="text-muted-foreground hover:text-foreground"
+                    >
+                      <X className="size-3" />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p className="text-sm text-muted-foreground">
+                No blocked authors. Add usernames to filter out posts from specific users.
+              </p>
+            )}
+
+            <p className="text-xs text-muted-foreground">
+              {blockedAuthors.length} blocked author{blockedAuthors.length === 1 ? "" : "s"}
+            </p>
           </CardContent>
         </Card>
 
