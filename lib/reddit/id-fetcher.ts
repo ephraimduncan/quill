@@ -82,6 +82,34 @@ export interface RedditComment {
   over_18: boolean;
 }
 
+/**
+ * Check if a Reddit post has been removed or deleted
+ * - author "[deleted]" means user deleted their account or post
+ * - selftext "[removed]" means moderators removed the content
+ * - selftext "[deleted]" means user deleted the content
+ */
+export function isPostRemovedOrDeleted(post: RedditPost): boolean {
+  return (
+    post.author === "[deleted]" ||
+    post.selftext === "[removed]" ||
+    post.selftext === "[deleted]"
+  );
+}
+
+/**
+ * Check if a Reddit comment has been removed or deleted
+ * - author "[deleted]" means user deleted their account or comment
+ * - body "[removed]" means moderators removed the content
+ * - body "[deleted]" means user deleted the content
+ */
+export function isCommentRemovedOrDeleted(comment: RedditComment): boolean {
+  return (
+    comment.author === "[deleted]" ||
+    comment.body === "[removed]" ||
+    comment.body === "[deleted]"
+  );
+}
+
 interface RedditApiChild<T = RedditPost> {
   kind: string;
   data: T;

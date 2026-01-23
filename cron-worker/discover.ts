@@ -24,6 +24,8 @@ import {
   batchFetchComments,
   generateNextIdRange,
   base36ToNumber,
+  isPostRemovedOrDeleted,
+  isCommentRemovedOrDeleted,
   type RedditPost,
   type RedditComment,
 } from "../lib/reddit/id-fetcher";
@@ -158,6 +160,7 @@ async function runDiscovery(): Promise<void> {
     for (const post of allPosts) {
       if (post.created_utc < thirtyDaysAgo) continue;
       if (post.over_18) continue;
+      if (isPostRemovedOrDeleted(post)) continue;
 
       const textToMatch = `${post.title} ${post.selftext}`;
       const matches = matcher.match(textToMatch);
@@ -243,6 +246,7 @@ async function runDiscovery(): Promise<void> {
     for (const comment of allComments) {
       if (comment.created_utc < thirtyDaysAgo) continue;
       if (comment.over_18) continue;
+      if (isCommentRemovedOrDeleted(comment)) continue;
 
       const matches = matcher.match(comment.body);
       const authorLower = comment.author.toLowerCase();

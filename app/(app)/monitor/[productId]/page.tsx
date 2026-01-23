@@ -140,6 +140,23 @@ export default function MonitorPage() {
           setSelectedThreadId(activeThreads[0].id)
         }
 
+        // Auto-dismiss old posts that already have low relevance scores
+        const threadsWithLowRelevance = productData.threads.filter(
+          (t: Thread) => t.status === "active" && t.relevanceScore !== null && t.relevanceScore < 30
+        )
+        for (const t of threadsWithLowRelevance) {
+          setProduct(prev => {
+            if (!prev) return prev
+            return {
+              ...prev,
+              threads: prev.threads.map(th =>
+                th.id === t.id ? { ...th, status: "dismissed", isNew: false } : th
+              )
+            }
+          })
+          fetch(`/api/threads/${t.id}/dismiss`, { method: "POST" })
+        }
+
         // Prefetch relevance for threads without scores
         const threadsWithoutRelevance = productData.threads.filter(
           (t: Thread) => t.status === "active" && t.relevanceScore === null
