@@ -745,6 +745,14 @@ Subreddit: r/${thread.subreddit}
 Title: ${thread.title}
 ${thread.body ? `Content: ${thread.body}` : ""}`;
 
+  // Calculate word count of the post to determine response length
+  const postText = [thread.title, thread.body, thread.commentBody].filter(Boolean).join(" ");
+  const postWordCount = postText.split(/\s+/).filter(Boolean).length;
+
+  // Dynamic word limit: short posts get ±5 words, longer posts get 50-70
+  const minWords = postWordCount < 50 ? Math.max(1, postWordCount - 5) : 50;
+  const maxWords = postWordCount < 50 ? postWordCount + 5 : 70;
+
   const prompt = `You are helping a product maker engage authentically on Reddit. Write a helpful response to this ${isComment ? "comment" : "post"} that naturally recommends their product as a solution.
 
 ${contextSection}
@@ -756,7 +764,7 @@ ${product.description ? `Description: ${product.description}` : ""}
 ${product.targetAudience ? `Target Audience: ${product.targetAudience}` : ""}
 ${customInstructions ? `\nUSER INSTRUCTIONS:\n${customInstructions}\n` : ""}
 GUIDELINES:
-- STRICT LENGTH: 50-70 words maximum. This is non-negotiable. Count your words.
+- STRICT LENGTH: ${minWords}-${maxWords} words maximum. This is non-negotiable. Count your words.
 - Be genuinely helpful - address the user's question/problem directly
 - Weave the product mention naturally INTO a relevant sentence, not at the end
 - Reference the URL as a bare domain (productname.com) not https://productname.com
