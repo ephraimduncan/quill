@@ -171,7 +171,7 @@ export default function MonitorPage() {
             })
           })
             .then(res => res.json())
-            .then(data => {
+            .then(async data => {
               if (typeof data.relevance === "number") {
                 setThreadRelevance(prev => ({ ...prev, [t.id]: data.relevance }))
 
@@ -186,6 +186,32 @@ export default function MonitorPage() {
                     }
                   })
                   fetch(`/api/threads/${t.id}/dismiss`, { method: "POST" })
+                }
+
+                // Auto-generate response for green threshold (>=70%) threads
+                if (data.relevance >= 70) {
+                  try {
+                    const generateRes = await fetch("/api/response/generate", {
+                      method: "POST",
+                      headers: { "Content-Type": "application/json" },
+                      body: JSON.stringify({
+                        thread: { title: t.title, body: t.bodyPreview, subreddit: t.subreddit },
+                        product: { name: productData.name, url: productData.url, description: productData.description, targetAudience: productData.targetAudience }
+                      })
+                    })
+                    const generateData = await generateRes.json()
+                    if (generateRes.ok && generateData.response) {
+                      setThreadResponses(prev => ({ ...prev, [t.id]: generateData.response }))
+                      fetch(`/api/threads/${t.id}/response`, {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({ relevanceScore: data.relevance, generatedResponse: generateData.response })
+                      })
+                      return
+                    }
+                  } catch {
+                    // Fall through to save just relevance
+                  }
                 }
 
                 fetch(`/api/threads/${t.id}/response`, {

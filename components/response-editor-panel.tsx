@@ -80,6 +80,7 @@ export function ResponseEditorPanel({
   }, [initialResponse, initialCustomInstructions, initialRelevance])
 
   // Auto-fetch relevance when thread is viewed and has no score
+  // Auto-generate response if relevance is in green threshold (>=70%)
   useEffect(() => {
     if (initialRelevance !== null) return
 
@@ -91,10 +92,40 @@ export function ResponseEditorPanel({
       body: JSON.stringify({ thread: threadPayload, product: productPayload }),
     })
       .then((res) => res.json())
-      .then((data) => {
+      .then(async (data) => {
         if (typeof data.relevance === "number") {
           setRelevance(data.relevance)
           onRelevanceChange?.(data.relevance)
+
+          // Auto-generate response for green threshold (>=70%)
+          if (data.relevance >= 70 && !initialResponse) {
+            setIsGenerating(true)
+            try {
+              const generateRes = await fetch("/api/response/generate", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                  thread: threadPayload,
+                  product: productPayload,
+                  customInstructions: customInstructions,
+                }),
+              })
+              const generateData = await generateRes.json()
+              if (generateRes.ok && generateData.response) {
+                const normalized = generateData.response.replace(/—/g, "; ").replace(/\n{2,}/g, "\n")
+                setResponse(normalized)
+                onResponseChange?.(normalized)
+                saveToServer({ relevanceScore: data.relevance, generatedResponse: normalized })
+                onMarkRead?.()
+                setIsGenerating(false)
+                return
+              }
+            } catch {
+              // Fall through to save just relevance
+            }
+            setIsGenerating(false)
+          }
+
           saveToServer({ relevanceScore: data.relevance })
         }
       })
