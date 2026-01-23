@@ -95,6 +95,8 @@ export default function MonitorPage() {
   const [threadResponses, setThreadResponses] = useState<Record<string, string>>({})
   const [threadCustomInstructions, setThreadCustomInstructions] = useState<Record<string, string>>({})
   const [threadRelevance, setThreadRelevance] = useState<Record<string, number>>({})
+  // Track thread that should stay in Threads tab until user navigates away
+  const [keepInThreadsId, setKeepInThreadsId] = useState<string | null>(null)
 
   const updateThread = useCallback((threadId: string, updates: Partial<Thread>) => {
     setProduct((prev) => {
@@ -234,6 +236,12 @@ export default function MonitorPage() {
   }, [productId])
 
   const handleThreadSelect = useCallback((threadId: string) => {
+    // Clear keepInThreadsId when navigating to a different thread
+    // This allows the previous thread to move to Generated tab if it has a response
+    if (keepInThreadsId && keepInThreadsId !== threadId) {
+      setKeepInThreadsId(null)
+    }
+
     setSelectedThreadId(threadId)
 
     const thread = product?.threads.find((t) => t.id === threadId)
@@ -241,7 +249,7 @@ export default function MonitorPage() {
       updateThread(threadId, { isNew: false })
       fetch(`/api/threads/${threadId}/mark-read`, { method: "POST" })
     }
-  }, [product?.threads, updateThread])
+  }, [product?.threads, updateThread, keepInThreadsId])
 
   const handleDismiss = useCallback(async (threadId: string) => {
     // Calculate next thread to select before updating
@@ -371,10 +379,11 @@ export default function MonitorPage() {
     })
 
   // Threads without generated responses (new/pending)
-  const activeThreads = allActiveThreads.filter((t) => !threadResponses[t.id])
+  // Also keep threads that have a response but should stay in Threads tab until user navigates away
+  const activeThreads = allActiveThreads.filter((t) => !threadResponses[t.id] || t.id === keepInThreadsId)
 
-  // Threads with generated responses
-  const generatedThreads = allActiveThreads.filter((t) => threadResponses[t.id])
+  // Threads with generated responses (excluding ones kept in Threads tab)
+  const generatedThreads = allActiveThreads.filter((t) => threadResponses[t.id] && t.id !== keepInThreadsId)
 
   const dismissedThreads = product.threads.filter((t) => t.status === "dismissed")
   const selectedThread = allActiveThreads.find((t) => t.id === selectedThreadId)
@@ -396,7 +405,13 @@ export default function MonitorPage() {
         <p className="text-muted-foreground">{product.description}</p>
       </div>
 
-      <Tabs value={activeTab} onValueChange={setActiveTab}>
+      <Tabs value={activeTab} onValueChange={(tab) => {
+        // Clear keepInThreadsId when switching tabs so the thread moves to Generated
+        if (tab !== "threads" && keepInThreadsId) {
+          setKeepInThreadsId(null)
+        }
+        setActiveTab(tab)
+      }}>
         <TabsList>
           <TabsTrigger value="threads">
             Threads
@@ -549,6 +564,10 @@ export default function MonitorPage() {
                             initialCustomInstructions={threadCustomInstructions[selectedThread.id] || ""}
                             initialRelevance={threadRelevance[selectedThread.id] ?? null}
                             onResponseChange={(response) => {
+                              // Keep this thread in Threads tab until user navigates away
+                              if (!threadResponses[selectedThread.id] && response) {
+                                setKeepInThreadsId(selectedThread.id)
+                              }
                               setThreadResponses((prev) => ({
                                 ...prev,
                                 [selectedThread.id]: response,
