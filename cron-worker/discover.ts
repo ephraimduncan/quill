@@ -157,6 +157,7 @@ async function runDiscovery(): Promise<void> {
 
     for (const post of allPosts) {
       if (post.created_utc < thirtyDaysAgo) continue;
+      if (post.over_18) continue;
 
       const textToMatch = `${post.title} ${post.selftext}`;
       const matches = matcher.match(textToMatch);
@@ -241,6 +242,7 @@ async function runDiscovery(): Promise<void> {
 
     for (const comment of allComments) {
       if (comment.created_utc < thirtyDaysAgo) continue;
+      if (comment.over_18) continue;
 
       const matches = matcher.match(comment.body);
       const authorLower = comment.author.toLowerCase();
