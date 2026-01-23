@@ -158,7 +158,7 @@ export default function MonitorPage() {
               if (typeof data.relevance === "number") {
                 setThreadRelevance(prev => ({ ...prev, [t.id]: data.relevance }))
 
-                if (data.relevance < 20) {
+                if (data.relevance < 30) {
                   setProduct(prev => {
                     if (!prev) return prev
                     return {
