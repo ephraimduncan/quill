@@ -47,6 +47,7 @@ type RedditThread = {
   permalink: string;
   created_utc: number;
   author: string;
+  over_18: boolean;
 };
 
 type ThreadResult = {
@@ -544,6 +545,7 @@ app.post("/threads/search", async (c) => {
       const posts = await searchRedditForKeyword(keyword);
       for (const thread of posts) {
         if (seenIds.has(thread.id) || thread.created_utc < sevenDaysAgo) continue;
+        if (thread.over_18) continue;
         seenIds.add(thread.id);
         allThreads.push(redditThreadToResult(thread));
       }
@@ -664,6 +666,7 @@ app.post("/threads/refresh", async (c) => {
       const posts = await searchRedditForKeyword(kw.keyword);
       for (const thread of posts) {
         if (seenIds.has(thread.id) || existingIds.has(thread.id) || thread.created_utc < sevenDaysAgo) continue;
+        if (thread.over_18) continue;
         if (blockedSet.has(thread.author.toLowerCase())) continue;
         seenIds.add(thread.id);
         newThreads.push(redditThreadToResult(thread));
@@ -935,6 +938,7 @@ app.get("/cron/discover", async (c) => {
 
     for (const post of posts) {
       if (post.created_utc < thirtyDaysAgo) continue;
+      if (post.over_18) continue;
 
       const textToMatch = `${post.title} ${post.selftext}`;
       const matches = matcher.match(textToMatch);
