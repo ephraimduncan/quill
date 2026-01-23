@@ -361,7 +361,7 @@ export default function MonitorPage() {
     )
   }
 
-  const activeThreads = product.threads
+  const allActiveThreads = product.threads
     .filter((t) => t.status === "active")
     .sort((a, b) => {
       // Sort by discovery time (newest discovered first)
@@ -369,9 +369,17 @@ export default function MonitorPage() {
       // and opened threads stay in their relative positions
       return b.discoveredAt - a.discoveredAt
     })
+
+  // Threads without generated responses (new/pending)
+  const activeThreads = allActiveThreads.filter((t) => !threadResponses[t.id])
+
+  // Threads with generated responses
+  const generatedThreads = allActiveThreads.filter((t) => threadResponses[t.id])
+
   const dismissedThreads = product.threads.filter((t) => t.status === "dismissed")
-  const selectedThread = activeThreads.find((t) => t.id === selectedThreadId)
+  const selectedThread = allActiveThreads.find((t) => t.id === selectedThreadId)
   const newThreadCount = activeThreads.filter((t) => t.isNew).length
+  const generatedCount = generatedThreads.length
 
   return (
     <div className="max-w-5xl mx-auto py-8 px-4">
@@ -395,6 +403,14 @@ export default function MonitorPage() {
             {newThreadCount > 0 && (
               <Badge variant="default" className="ml-2 h-5 min-w-5 px-1.5">
                 {newThreadCount}
+              </Badge>
+            )}
+          </TabsTrigger>
+          <TabsTrigger value="generated">
+            Generated
+            {generatedCount > 0 && (
+              <Badge variant="secondary" className="ml-2 h-5 min-w-5 px-1.5">
+                {generatedCount}
               </Badge>
             )}
           </TabsTrigger>
@@ -455,21 +471,14 @@ export default function MonitorPage() {
                             <div className="font-medium text-sm line-clamp-2 flex-1">
                               {thread.title}
                             </div>
-                            <div className="flex items-center gap-1 shrink-0">
-                              {threadResponses[thread.id] && (
-                                <span title="Response generated">
-                                  <Sparkles className="size-3.5 text-primary" />
-                                </span>
-                              )}
-                              {thread.isNew && (
-                                <Badge variant="default" className="shrink-0">
-                                  New
-                                </Badge>
-                              )}
-                            </div>
+                            {thread.isNew && (
+                              <Badge variant="default" className="shrink-0">
+                                New
+                              </Badge>
+                            )}
                           </div>
-                          <ThreadMetadata 
-                            subreddit={thread.subreddit} 
+                          <ThreadMetadata
+                            subreddit={thread.subreddit}
                             createdUtc={thread.createdUtc}
                             matchedKeyword={thread.matchedKeyword}
                           />
@@ -479,7 +488,159 @@ export default function MonitorPage() {
                   </div>
 
                   <div className="w-3/5 border rounded-md p-4 flex flex-col">
-                    {selectedThread ? (
+                    {selectedThread && activeThreads.some(t => t.id === selectedThreadId) ? (
+                      <div className="flex flex-col h-full">
+                        <div className="space-y-4 mb-6">
+                          <h3 className="font-semibold text-lg">
+                            {selectedThread.title}
+                          </h3>
+                          <p className="text-sm text-muted-foreground">
+                            {truncateText(selectedThread.bodyPreview, 200)}
+                          </p>
+                          <div className="flex items-center gap-4 text-sm text-muted-foreground">
+                            <span>r/{selectedThread.subreddit}</span>
+                            <span>{formatRelativeTime(selectedThread.createdUtc)}</span>
+                            {selectedThread.matchedKeyword && (
+                              <span className="inline-flex items-center gap-1">
+                                <span className="text-xs">Matched keyword:</span>
+                                <Badge variant="outline" className="text-xs px-2 py-0.5 font-normal">
+                                  {selectedThread.matchedKeyword}
+                                </Badge>
+                              </span>
+                            )}
+                          </div>
+                          <div className="flex items-center gap-4">
+                            <a
+                              href={selectedThread.url}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="inline-flex items-center gap-1 text-sm text-primary hover:underline"
+                            >
+                              Open in Reddit
+                              <ExternalLink className="size-3" />
+                            </a>
+                            <button
+                              type="button"
+                              onClick={() => handleDismiss(selectedThread.id)}
+                              className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-destructive transition-colors"
+                            >
+                              <X className="size-3" />
+                              Dismiss
+                            </button>
+                          </div>
+                        </div>
+
+                        <div className="border-t pt-4 flex-1">
+                          <h4 className="font-medium mb-3">Response</h4>
+                          <ResponseEditorPanel
+                            threadId={selectedThread.id}
+                            thread={{
+                              title: selectedThread.title,
+                              bodyPreview: selectedThread.bodyPreview,
+                              subreddit: selectedThread.subreddit,
+                            }}
+                            product={{
+                              name: product.name,
+                              url: product.url,
+                              description: product.description,
+                              targetAudience: product.targetAudience,
+                            }}
+                            initialResponse={threadResponses[selectedThread.id] || ""}
+                            initialCustomInstructions={threadCustomInstructions[selectedThread.id] || ""}
+                            initialRelevance={threadRelevance[selectedThread.id] ?? null}
+                            onResponseChange={(response) => {
+                              setThreadResponses((prev) => ({
+                                ...prev,
+                                [selectedThread.id]: response,
+                              }))
+                            }}
+                            onCustomInstructionsChange={(instructions) => {
+                              setThreadCustomInstructions((prev) => ({
+                                ...prev,
+                                [selectedThread.id]: instructions,
+                              }))
+                            }}
+                            onRelevanceChange={(relevance) => {
+                              setThreadRelevance((prev) => ({
+                                ...prev,
+                                [selectedThread.id]: relevance,
+                              }))
+                            }}
+                            onMarkRead={() => {
+                              if (selectedThread.isNew) {
+                                updateThread(selectedThread.id, { isNew: false })
+                                fetch(`/api/threads/${selectedThread.id}/mark-read`, { method: "POST" })
+                              }
+                            }}
+                          />
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="flex items-center justify-center h-full text-muted-foreground">
+                        Select a thread to view details
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="generated">
+          <Card>
+            <CardHeader>
+              <div className="flex items-start justify-between">
+                <div>
+                  <CardTitle>Generated Responses</CardTitle>
+                  <CardDescription>
+                    {pluralize(generatedThreads.length, "thread")} with generated responses
+                  </CardDescription>
+                </div>
+              </div>
+            </CardHeader>
+            <CardContent>
+              {generatedThreads.length === 0 ? (
+                <p className="text-center text-muted-foreground py-8">
+                  No threads with generated responses yet
+                </p>
+              ) : (
+                <div className="flex gap-4 min-h-[500px]">
+                  <div className="w-2/5 border rounded-md overflow-hidden">
+                    <div className="max-h-[500px] overflow-y-auto">
+                      {generatedThreads.map((thread) => (
+                        <button
+                          key={thread.id}
+                          type="button"
+                          onClick={() => handleThreadSelect(thread.id)}
+                          className={`w-full text-left p-3 border-b last:border-b-0 transition-colors relative ${
+                            selectedThreadId === thread.id
+                              ? "bg-primary/10 border-l-4 border-l-primary font-medium"
+                              : "hover:bg-muted/50"
+                          }`}
+                        >
+                          <div className="flex items-start gap-2">
+                            <div className="font-medium text-sm line-clamp-2 flex-1">
+                              {thread.title}
+                            </div>
+                            <div className="flex items-center gap-1 shrink-0">
+                              <span title="Response generated">
+                                <Sparkles className="size-3.5 text-primary" />
+                              </span>
+                            </div>
+                          </div>
+                          <ThreadMetadata
+                            subreddit={thread.subreddit}
+                            createdUtc={thread.createdUtc}
+                            matchedKeyword={thread.matchedKeyword}
+                          />
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="w-3/5 border rounded-md p-4 flex flex-col">
+                    {selectedThread && generatedThreads.some(t => t.id === selectedThreadId) ? (
                       <div className="flex flex-col h-full">
                         <div className="space-y-4 mb-6">
                           <h3 className="font-semibold text-lg">
