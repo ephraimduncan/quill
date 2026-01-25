@@ -31,6 +31,14 @@ import {
 } from "../lib/reddit/id-fetcher";
 import { buildMatcher, type KeywordMatch } from "../lib/reddit/keyword-matcher";
 
+function chunk<T>(arr: T[], size: number): T[][] {
+  const chunks: T[][] = [];
+  for (let i = 0; i < arr.length; i += size) {
+    chunks.push(arr.slice(i, i + size));
+  }
+  return chunks;
+}
+
 // Initialize database connection
 const url = process.env.TURSO_DATABASE_URL;
 if (!url) {
@@ -192,7 +200,9 @@ async function runDiscovery(): Promise<void> {
     }
 
     if (threadsToInsert.length > 0) {
-      await db.insert(threads).values(threadsToInsert);
+      for (const batch of chunk(threadsToInsert, 50)) {
+        await db.insert(threads).values(batch);
+      }
       console.log(`[Cron] Inserted ${threadsToInsert.length} new post threads`);
     }
 
@@ -283,7 +293,9 @@ async function runDiscovery(): Promise<void> {
     }
 
     if (commentThreadsToInsert.length > 0) {
-      await db.insert(threads).values(commentThreadsToInsert);
+      for (const batch of chunk(commentThreadsToInsert, 50)) {
+        await db.insert(threads).values(batch);
+      }
       console.log(`[Cron] Inserted ${commentThreadsToInsert.length} new comment threads`);
     }
 
