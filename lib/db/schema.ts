@@ -25,6 +25,12 @@ export const blockedAuthors = sqliteTable("blocked_authors", {
   username: text("username").notNull(),
 });
 
+export const globalBlockedAuthors = sqliteTable("global_blocked_authors", {
+  id: text("id").primaryKey(),
+  username: text("username").notNull(),
+  userId: text("user_id").notNull().references(() => user.id, { onDelete: "cascade" }),
+});
+
 export const threads = sqliteTable("threads", {
   id: text("id").primaryKey(),
   productId: text("product_id").notNull().references(() => products.id, { onDelete: "cascade" }),
@@ -62,6 +68,8 @@ export type Keyword = typeof keywords.$inferSelect;
 export type NewKeyword = typeof keywords.$inferInsert;
 export type BlockedAuthor = typeof blockedAuthors.$inferSelect;
 export type NewBlockedAuthor = typeof blockedAuthors.$inferInsert;
+export type GlobalBlockedAuthor = typeof globalBlockedAuthors.$inferSelect;
+export type NewGlobalBlockedAuthor = typeof globalBlockedAuthors.$inferInsert;
 export type Thread = typeof threads.$inferSelect;
 export type NewThread = typeof threads.$inferInsert;
 export type RedditSyncState = typeof redditSyncState.$inferSelect;

@@ -7,7 +7,7 @@ import { Readability } from "@mozilla/readability";
 import { generateText, Output } from "ai";
 import { z } from "zod";
 import { auth } from "@/lib/auth";
-import { db, products, threads, keywords, redditSyncState, blockedAuthors } from "@/lib/db";
+import { db, products, threads, keywords, redditSyncState, blockedAuthors, globalBlockedAuthors } from "@/lib/db";
 import { batchFetchPosts, generateNextIdRange, base36ToNumber, type RedditPost } from "@/lib/reddit/id-fetcher";
 import { buildMatcher, type KeywordMatch } from "@/lib/reddit/keyword-matcher";
 import { extractModel, keywordsModel, responseModel, relevanceModel } from "@/lib/models";
@@ -339,6 +339,59 @@ app.delete("/products/:id/blocked-authors/:username", async (c) => {
   return c.json({ success: true });
 });
 
+app.get("/settings/blocked-authors", async (c) => {
+  const user = c.get("user");
+  if (!user) return c.json({ error: "Unauthorized" }, 401);
+
+  const blocked = await db
+    .select({ username: globalBlockedAuthors.username })
+    .from(globalBlockedAuthors)
+    .where(eq(globalBlockedAuthors.userId, user.id));
+
+  return c.json(blocked.map((b) => b.username));
+});
+
+const globalBlockedAuthorSchema = z.object({
+  username: z.string().min(1).transform((v) => v.replace(/^u\//, "").trim()),
+});
+
+app.post("/settings/blocked-authors", async (c) => {
+  const user = c.get("user");
+  if (!user) return c.json({ error: "Unauthorized" }, 401);
+
+  const body = await c.req.json();
+  const parsed = globalBlockedAuthorSchema.safeParse(body);
+  if (!parsed.success) return c.json({ error: "Invalid username" }, 400);
+
+  const { username } = parsed.data;
+
+  const existing = await db
+    .select()
+    .from(globalBlockedAuthors)
+    .where(and(eq(globalBlockedAuthors.userId, user.id), eq(globalBlockedAuthors.username, username)));
+  if (existing.length > 0) return c.json({ error: "Author already blocked" }, 400);
+
+  await db.insert(globalBlockedAuthors).values({
+    id: randomUUID(),
+    userId: user.id,
+    username,
+  });
+
+  return c.json({ success: true }, 201);
+});
+
+app.delete("/settings/blocked-authors/:username", async (c) => {
+  const user = c.get("user");
+  if (!user) return c.json({ error: "Unauthorized" }, 401);
+
+  const username = decodeURIComponent(c.req.param("username"));
+  await db
+    .delete(globalBlockedAuthors)
+    .where(and(eq(globalBlockedAuthors.userId, user.id), eq(globalBlockedAuthors.username, username)));
+
+  return c.json({ success: true });
+});
+
 const productInfoSchema = z.object({
   name: z.string().describe("The product or service name"),
   description: z
@@ -643,11 +696,14 @@ app.post("/threads/refresh", async (c) => {
   const productKeywords = await db.select().from(keywords).where(eq(keywords.productId, productId));
   if (productKeywords.length === 0) return c.json({ error: "No keywords found for this product" }, 400);
 
-  const productBlockedAuthors = await db
-    .select({ username: blockedAuthors.username })
-    .from(blockedAuthors)
-    .where(eq(blockedAuthors.productId, productId));
-  const blockedSet = new Set(productBlockedAuthors.map((b) => b.username.toLowerCase()));
+  const [productBlockedAuthors, userGlobalBlocked] = await Promise.all([
+    db.select({ username: blockedAuthors.username }).from(blockedAuthors).where(eq(blockedAuthors.productId, productId)),
+    db.select({ username: globalBlockedAuthors.username }).from(globalBlockedAuthors).where(eq(globalBlockedAuthors.userId, user.id)),
+  ]);
+  const blockedSet = new Set([
+    ...productBlockedAuthors.map((b) => b.username.toLowerCase()),
+    ...userGlobalBlocked.map((b) => b.username.toLowerCase()),
+  ]);
 
   const existingThreads = await db
     .select({ redditThreadId: threads.redditThreadId })

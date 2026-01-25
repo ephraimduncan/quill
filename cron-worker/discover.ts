@@ -42,7 +42,7 @@ const client = createClient({
 });
 
 const db = drizzle(client, { schema });
-const { keywords, threads, redditSyncState, blockedAuthors } = schema;
+const { keywords, threads, redditSyncState, blockedAuthors, globalBlockedAuthors, products } = schema;
 
 async function runDiscovery(): Promise<void> {
   const startTime = Date.now();
@@ -90,14 +90,40 @@ async function runDiscovery(): Promise<void> {
     const allBlockedAuthors = await db
       .select({ username: blockedAuthors.username, productId: blockedAuthors.productId })
       .from(blockedAuthors);
+
+    const allProducts = await db
+      .select({ id: products.id, userId: products.userId })
+      .from(products);
+
+    const allGlobalBlocked = await db
+      .select({ username: globalBlockedAuthors.username, userId: globalBlockedAuthors.userId })
+      .from(globalBlockedAuthors);
+    const globalBlockedByUser = new Map<string, Set<string>>();
+    for (const gb of allGlobalBlocked) {
+      if (!globalBlockedByUser.has(gb.userId)) {
+        globalBlockedByUser.set(gb.userId, new Set());
+      }
+      globalBlockedByUser.get(gb.userId)!.add(gb.username.toLowerCase());
+    }
+
     const blockedByProduct = new Map<string, Set<string>>();
+    for (const product of allProducts) {
+      const perProduct = new Set<string>();
+      const userGlobal = globalBlockedByUser.get(product.userId);
+      if (userGlobal) {
+        for (const username of userGlobal) {
+          perProduct.add(username);
+        }
+      }
+      blockedByProduct.set(product.id, perProduct);
+    }
     for (const ba of allBlockedAuthors) {
       if (!blockedByProduct.has(ba.productId)) {
         blockedByProduct.set(ba.productId, new Set());
       }
       blockedByProduct.get(ba.productId)!.add(ba.username.toLowerCase());
     }
-    console.log(`[Cron] Loaded ${allBlockedAuthors.length} blocked authors across products`);
+    console.log(`[Cron] Loaded ${allBlockedAuthors.length} per-product + ${allGlobalBlocked.length} global blocked authors`);
 
     // Generate next 3000 IDs by incrementing (F5Bot approach)
     const idsToFetch = generateNextIdRange(lastPostId, 3000);
