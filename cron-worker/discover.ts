@@ -39,6 +39,11 @@ function chunk<T>(arr: T[], size: number): T[][] {
   return chunks;
 }
 
+function safeSlice(str: string, maxLength: number): string {
+  const arr = [...str];
+  return arr.slice(0, maxLength).join("");
+}
+
 // Initialize database connection
 const url = process.env.TURSO_DATABASE_URL;
 if (!url) {
@@ -187,7 +192,7 @@ async function runDiscovery(): Promise<void> {
           productId: match.productId,
           redditThreadId: post.id,
           title: post.title,
-          bodyPreview: post.selftext.slice(0, 200),
+          bodyPreview: safeSlice(post.selftext, 200),
           subreddit: post.subreddit,
           url: `https://reddit.com${post.permalink}`,
           createdUtc: post.created_utc,
@@ -200,7 +205,7 @@ async function runDiscovery(): Promise<void> {
     }
 
     if (threadsToInsert.length > 0) {
-      for (const batch of chunk(threadsToInsert, 50)) {
+      for (const batch of chunk(threadsToInsert, 25)) {
         await db.insert(threads).values(batch);
       }
       console.log(`[Cron] Inserted ${threadsToInsert.length} new post threads`);
@@ -276,7 +281,7 @@ async function runDiscovery(): Promise<void> {
           productId: match.productId,
           redditThreadId: comment.id,
           title: comment.link_title || "[Comment]",
-          bodyPreview: comment.body.slice(0, 200),
+          bodyPreview: safeSlice(comment.body, 200),
           subreddit: comment.subreddit,
           url: `https://reddit.com${comment.permalink}`,
           createdUtc: comment.created_utc,
@@ -293,7 +298,7 @@ async function runDiscovery(): Promise<void> {
     }
 
     if (commentThreadsToInsert.length > 0) {
-      for (const batch of chunk(commentThreadsToInsert, 50)) {
+      for (const batch of chunk(commentThreadsToInsert, 25)) {
         await db.insert(threads).values(batch);
       }
       console.log(`[Cron] Inserted ${commentThreadsToInsert.length} new comment threads`);
