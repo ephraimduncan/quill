@@ -922,10 +922,7 @@ app.get("/cron/discover", async (c) => {
     
     const posts = allPosts;
 
-    const existingThreads = await db
-      .select({ redditThreadId: threads.redditThreadId, productId: threads.productId })
-      .from(threads);
-    const existingSet = new Set(existingThreads.map((t) => `${t.productId}:${t.redditThreadId}`));
+    const seenKeys = new Set<string>();
 
     const thirtyDaysAgo = Math.floor(Date.now() / 1000) - 30 * 24 * 60 * 60;
     const now = Math.floor(Date.now() / 1000);
@@ -953,8 +950,8 @@ app.get("/cron/discover", async (c) => {
 
       for (const match of matches) {
         const key = `${match.productId}:${post.id}`;
-        if (existingSet.has(key)) continue;
-        existingSet.add(key);
+        if (seenKeys.has(key)) continue;
+        seenKeys.add(key);
 
         threadsToInsert.push({
           id: randomUUID(),
@@ -973,9 +970,13 @@ app.get("/cron/discover", async (c) => {
       }
     }
 
+    let insertedCount = 0;
     if (threadsToInsert.length > 0) {
-      await db.insert(threads).values(threadsToInsert);
-      console.log(`[Cron] Inserted ${threadsToInsert.length} new threads`);
+      const inserted = await db.insert(threads).values(threadsToInsert)
+        .onConflictDoNothing({ target: [threads.productId, threads.redditThreadId] })
+        .returning({ id: threads.id });
+      insertedCount = inserted.length;
+      console.log(`[Cron] Inserted ${insertedCount} new threads`);
     }
 
     // Update sync state with highest found ID (F5Bot approach)
@@ -995,14 +996,14 @@ app.get("/cron/discover", async (c) => {
     const duration = Date.now() - startTime;
     console.log(`[Cron] Completed in ${duration}ms`, {
       postsProcessed: posts.length,
-      newThreadsFound: threadsToInsert.length,
+      newThreadsInserted: insertedCount,
       lastPostId: highestId,
     });
 
     return c.json({
       success: true,
       postsProcessed: posts.length,
-      newThreadsFound: threadsToInsert.length,
+      newThreadsInserted: insertedCount,
     });
   } catch (error) {
     const duration = Date.now() - startTime;

@@ -1,4 +1,4 @@
-import { sqliteTable, text, integer } from "drizzle-orm/sqlite-core";
+import { sqliteTable, text, integer, uniqueIndex, index } from "drizzle-orm/sqlite-core";
 import { user } from "@/lib/auth/schema";
 
 export * from "@/lib/auth/schema";
@@ -45,7 +45,10 @@ export const threads = sqliteTable("threads", {
   generatedResponse: text("generated_response"),
   customInstructions: text("custom_instructions"),
   relevanceScore: integer("relevance_score"),
-});
+}, (table) => [
+  uniqueIndex("threads_product_reddit_idx").on(table.productId, table.redditThreadId),
+  index("threads_product_id_idx").on(table.productId),
+]);
 
 export const redditSyncState = sqliteTable("reddit_sync_state", {
   id: text("id").primaryKey().default("global"),

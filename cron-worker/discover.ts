@@ -143,15 +143,7 @@ async function runDiscovery(): Promise<void> {
       }
     }
 
-    const existingThreads = await db
-      .select({
-        redditThreadId: threads.redditThreadId,
-        productId: threads.productId,
-      })
-      .from(threads);
-    const existingSet = new Set(
-      existingThreads.map((t) => `${t.productId}:${t.redditThreadId}`)
-    );
+    const seenKeys = new Set<string>();
 
     const thirtyDaysAgo = Math.floor(Date.now() / 1000) - 30 * 24 * 60 * 60;
     const now = Math.floor(Date.now() / 1000);
@@ -184,8 +176,8 @@ async function runDiscovery(): Promise<void> {
         if (blocked?.has(authorLower)) continue;
 
         const key = `${match.productId}:${post.id}`;
-        if (existingSet.has(key)) continue;
-        existingSet.add(key);
+        if (seenKeys.has(key)) continue;
+        seenKeys.add(key);
 
         threadsToInsert.push({
           id: randomUUID(),
@@ -204,11 +196,15 @@ async function runDiscovery(): Promise<void> {
       }
     }
 
+    let insertedPostCount = 0;
     if (threadsToInsert.length > 0) {
       for (const batch of chunk(threadsToInsert, 25)) {
-        await db.insert(threads).values(batch);
+        const inserted = await db.insert(threads).values(batch)
+          .onConflictDoNothing({ target: [threads.productId, threads.redditThreadId] })
+          .returning({ id: threads.id });
+        insertedPostCount += inserted.length;
       }
-      console.log(`[Cron] Inserted ${threadsToInsert.length} new post threads`);
+      console.log(`[Cron] Inserted ${insertedPostCount} new post threads`);
     }
 
     // Comment discovery
@@ -271,8 +267,8 @@ async function runDiscovery(): Promise<void> {
         if (blocked?.has(authorLower)) continue;
 
         const key = `${match.productId}:${comment.id}`;
-        if (existingSet.has(key)) continue;
-        existingSet.add(key);
+        if (seenKeys.has(key)) continue;
+        seenKeys.add(key);
 
         const parentPostId = comment.link_id.replace("t3_", "");
 
@@ -297,11 +293,15 @@ async function runDiscovery(): Promise<void> {
       }
     }
 
+    let insertedCommentCount = 0;
     if (commentThreadsToInsert.length > 0) {
       for (const batch of chunk(commentThreadsToInsert, 25)) {
-        await db.insert(threads).values(batch);
+        const inserted = await db.insert(threads).values(batch)
+          .onConflictDoNothing({ target: [threads.productId, threads.redditThreadId] })
+          .returning({ id: threads.id });
+        insertedCommentCount += inserted.length;
       }
-      console.log(`[Cron] Inserted ${commentThreadsToInsert.length} new comment threads`);
+      console.log(`[Cron] Inserted ${insertedCommentCount} new comment threads`);
     }
 
     // Update sync state with highest found IDs
@@ -323,8 +323,8 @@ async function runDiscovery(): Promise<void> {
     console.log(`[Cron] Completed in ${duration}ms`, {
       postsProcessed: allPosts.length,
       commentsProcessed: allComments.length,
-      newPostThreadsFound: threadsToInsert.length,
-      newCommentThreadsFound: commentThreadsToInsert.length,
+      newPostThreadsInserted: insertedPostCount,
+      newCommentThreadsInserted: insertedCommentCount,
       lastPostId: highestId,
       lastCommentId: highestCommentId,
     });
