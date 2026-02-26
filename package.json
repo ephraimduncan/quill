@@ -11,7 +11,8 @@
     "db:migrate": "drizzle-kit migrate",
     "db:push": "drizzle-kit push",
     "db:studio": "drizzle-kit studio",
-    "cron:discover": "bun run cron-worker/discover.ts"
+    "cron:discover": "bun run cron-worker/discover.ts",
+    "db:migrate:prod": "TURSO_DATABASE_URL=$(turso db show reddit-agent-production --url) TURSO_AUTH_TOKEN=$(turso db tokens create reddit-agent-production) bunx drizzle-kit push"
   },
   "dependencies": {
     "@base-ui/react": "^1.1.0",
