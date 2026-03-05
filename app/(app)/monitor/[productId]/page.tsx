@@ -416,7 +416,7 @@ export default function MonitorPage() {
           <TabsTrigger value="threads">
             Threads
             {newThreadCount > 0 && (
-              <Badge variant="default" className="ml-2 h-5 min-w-5 px-1.5">
+              <Badge variant="default" className="ml-2 h-5 min-w-5 px-1.5 tabular-nums">
                 {newThreadCount}
               </Badge>
             )}
@@ -424,7 +424,7 @@ export default function MonitorPage() {
           <TabsTrigger value="generated">
             Generated
             {generatedCount > 0 && (
-              <Badge variant="secondary" className="ml-2 h-5 min-w-5 px-1.5">
+              <Badge variant="secondary" className="ml-2 h-5 min-w-5 px-1.5 tabular-nums">
                 {generatedCount}
               </Badge>
             )}
