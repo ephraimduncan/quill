@@ -12,6 +12,7 @@ import { Button } from "@/components/ui/button"
 import { Spinner } from "@/components/ui/spinner"
 import { ResponseEditorPanel } from "@/components/response-editor-panel"
 import { toast } from "sonner"
+import { createConcurrencyLimiter } from "@/lib/concurrency"
 
 type Thread = {
   id: string
@@ -143,9 +144,11 @@ export default function MonitorPage() {
         }
 
         // Auto-dismiss old posts that already have low relevance scores
+        // Use concurrency limiter to avoid exhausting browser connections
         const threadsWithLowRelevance = productData.threads.filter(
           (t: Thread) => t.status === "active" && t.relevanceScore !== null && t.relevanceScore < 30
         )
+        const dismissLimit = createConcurrencyLimiter(5)
         for (const t of threadsWithLowRelevance) {
           setProduct(prev => {
             if (!prev) return prev
@@ -156,74 +159,80 @@ export default function MonitorPage() {
               )
             }
           })
-          fetch(`/api/threads/${t.id}/dismiss`, { method: "POST" })
+          dismissLimit(() => fetch(`/api/threads/${t.id}/dismiss`, { method: "POST" }))
         }
 
         // Prefetch relevance for threads without scores
+        // Use concurrency limiter to process threads in controlled batches
         const threadsWithoutRelevance = productData.threads.filter(
           (t: Thread) => t.status === "active" && t.relevanceScore === null
         )
+        const relevanceLimit = createConcurrencyLimiter(5)
         for (const t of threadsWithoutRelevance) {
-          fetch("/api/response/relevance", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              thread: { title: t.title, body: t.bodyPreview, subreddit: t.subreddit },
-              product: { name: productData.name, description: productData.description, targetAudience: productData.targetAudience }
-            })
-          })
-            .then(res => res.json())
-            .then(async data => {
-              if (typeof data.relevance === "number") {
-                setThreadRelevance(prev => ({ ...prev, [t.id]: data.relevance }))
+          relevanceLimit(async () => {
+            try {
+              const res = await fetch("/api/response/relevance", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                  thread: { title: t.title, body: t.bodyPreview, subreddit: t.subreddit },
+                  product: { name: productData.name, description: productData.description, targetAudience: productData.targetAudience }
+                })
+              })
+              const data = await res.json()
+              if (typeof data.relevance !== "number") return
 
-                if (data.relevance < 30) {
-                  setProduct(prev => {
-                    if (!prev) return prev
-                    return {
-                      ...prev,
-                      threads: prev.threads.map(th =>
-                        th.id === t.id ? { ...th, status: "dismissed", isNew: false } : th
-                      )
-                    }
+              setThreadRelevance(prev => ({ ...prev, [t.id]: data.relevance }))
+
+              if (data.relevance < 30) {
+                setProduct(prev => {
+                  if (!prev) return prev
+                  return {
+                    ...prev,
+                    threads: prev.threads.map(th =>
+                      th.id === t.id ? { ...th, status: "dismissed", isNew: false } : th
+                    )
+                  }
+                })
+                await fetch(`/api/threads/${t.id}/dismiss`, { method: "POST" })
+                return
+              }
+
+              // Auto-generate response for green threshold (>=70%) threads
+              if (data.relevance >= 70) {
+                try {
+                  const generateRes = await fetch("/api/response/generate", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                      thread: { title: t.title, body: t.bodyPreview, subreddit: t.subreddit },
+                      product: { name: productData.name, url: productData.url, description: productData.description, targetAudience: productData.targetAudience }
+                    })
                   })
-                  fetch(`/api/threads/${t.id}/dismiss`, { method: "POST" })
-                }
-
-                // Auto-generate response for green threshold (>=70%) threads
-                if (data.relevance >= 70) {
-                  try {
-                    const generateRes = await fetch("/api/response/generate", {
+                  const generateData = await generateRes.json()
+                  if (generateRes.ok && generateData.response) {
+                    setThreadResponses(prev => ({ ...prev, [t.id]: generateData.response }))
+                    await fetch(`/api/threads/${t.id}/response`, {
                       method: "POST",
                       headers: { "Content-Type": "application/json" },
-                      body: JSON.stringify({
-                        thread: { title: t.title, body: t.bodyPreview, subreddit: t.subreddit },
-                        product: { name: productData.name, url: productData.url, description: productData.description, targetAudience: productData.targetAudience }
-                      })
+                      body: JSON.stringify({ relevanceScore: data.relevance, generatedResponse: generateData.response })
                     })
-                    const generateData = await generateRes.json()
-                    if (generateRes.ok && generateData.response) {
-                      setThreadResponses(prev => ({ ...prev, [t.id]: generateData.response }))
-                      fetch(`/api/threads/${t.id}/response`, {
-                        method: "POST",
-                        headers: { "Content-Type": "application/json" },
-                        body: JSON.stringify({ relevanceScore: data.relevance, generatedResponse: generateData.response })
-                      })
-                      return
-                    }
-                  } catch {
-                    // Fall through to save just relevance
+                    return
                   }
+                } catch {
+                  // Fall through to save just relevance
                 }
-
-                fetch(`/api/threads/${t.id}/response`, {
-                  method: "POST",
-                  headers: { "Content-Type": "application/json" },
-                  body: JSON.stringify({ relevanceScore: data.relevance })
-                })
               }
-            })
-            .catch(() => {})
+
+              await fetch(`/api/threads/${t.id}/response`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ relevanceScore: data.relevance })
+              })
+            } catch {
+              // Ignore per-thread errors
+            }
+          })
         }
       } catch {
         setError("Failed to connect to server")
